@@ -395,20 +395,17 @@ function analyze(n) {
     }
     return { k, label: l, val, c: cc, msg, z };
   });
-  return { m, rows, conf: c, dims: dims(m, rows, c), baseN: b.cad ? b.cad.n : 0 };
+  return { m, rows, conf: c, dims: dims(m, c), baseN: b.cad ? b.cad.n : 0 };
 }
 
 // Independent dimensions – deliberately NOT averaged into one score.
-function dims(m, rows, c) {
-  const r = k => rows.find(x => x.k === k) || { val: '–', c: '' };
+// Only dimensions that are NOT already a Measurements chip (vo / ovs / gct used to be repeated here).
+function dims(m, c) {
   const band = (v, a, b, u) => isFinite(v) ? { val: v.toFixed(1) + u, c: v <= a ? G : v <= b ? W : B } : { val: '–', c: '' };
   return [
     { label: 'Measurement confidence', val: Math.round(c) + '%', c: c >= 75 ? G : c >= 50 ? W : B },
     { label: 'Stride consistency (CV)', ...band(m.cv, 3, 6, '%') },
-    { label: 'L/R symmetry (index)', ...band(m.si, 5, 10, '%') },
-    { label: 'Vertical motion', val: r('vo').val, c: r('vo').c },
-    { label: 'Braking / overstride', val: r('ovs').val, c: r('ovs').c },
-    { label: 'Ground contact', val: r('gct').val, c: r('gct').c }
+    { label: 'L/R symmetry (index)', ...band(m.si, 5, 10, '%') }
   ].map((x, i) => i && c < LOWCONF ? { ...x, c: '' } : x);
 }
 
@@ -578,7 +575,8 @@ async function finish() {
   const sum = { conf: an.conf, dims: an.dims, rows: an.rows, steps: S.steps.length, strides, ok, modeTarget: rmode(), curves: an.m.curves, baseN: an.baseN };
   if (ok && an.conf >= 60) baseUpdate(sum.modeTarget, an.m);     // only confident sessions shape the baseline
   let blob = null; if (rec && rec.state !== 'inactive') blob = await stopRec();
-  $('#sum').innerHTML = sumHTML(sum); paint(an);
+  // The summary card already holds the full readings + coaching, so clear the live panel instead of repainting it (was showing results twice)
+  $('#sum').innerHTML = sumHTML(sum); $('#chips').innerHTML = $('#cm').innerHTML = '';
   if (blob) {
     await tx('readwrite', s => s.put({ id: Date.now(), date: new Date().toLocaleString(), mode, sum, blob }));
     say('Saved to History'); renderHist();
@@ -597,7 +595,7 @@ function sumHTML(s) {
   const base = nw ? `<div class="note">${s.baseN >= 3 ? `Compared with your ${mt} baseline (${s.baseN} sessions).` : `Building your ${mt} baseline (${s.baseN}/3 sessions) – colours use general reference ranges until then.`}</div>` : '';
   return `<div class="card">${head}
 <div class="note">${s.steps} steps${s.strides != null ? ' · ' + s.strides + ' valid strides' : ''} analysed</div>${warn}${base}
-${nw ? `<b>Form dimensions</b><div class="grid">${chips(s.dims)}</div><b>Measurements</b>` : ''}<div class="grid">${chips(s.rows)}</div>
+${nw ? `<b>Form dimensions</b><div class="grid">${chips(s.dims.filter(x => !['Vertical motion', 'Braking / overstride', 'Ground contact'].includes(x.label)))}</div><b>Measurements</b>` : ''}<div class="grid">${chips(s.rows)}</div>
 <b>Coaching notes</b><ul>${(tips.length ? tips : [{ c: 0, msg: 'No notable deviations for this effort.' }]).map(x => `<li class="${cl[x.c]}">${x.msg}</li>`).join('')}</ul></div>`;
 }
 
