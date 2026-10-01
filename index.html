@@ -3,7 +3,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#16222e">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Zoomies"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="manifest.webmanifest"><link rel="icon" type="image/png" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Zoomies - Running gait analyzer</title>
 <link rel="stylesheet" href="styles.css"></head><body>
 <div id="splash" role="img" aria-label="Zoomies"><img id="splashImg" src="splash-screen.gif" alt="" decoding="async"></div>
@@ -16,11 +16,21 @@
  <div id="scrub" class="row" hidden><button id="sb" title="Back one frame">‹</button><input id="sr" type="range" min="0" max="1" step="0.01" value="0" style="flex:1"><button id="sf" title="Forward one frame">›</button><span id="st" class="note"></span></div>
  <div class="row"><button id="bGo" class="pri" disabled>Start analysis</button></div>
  <div class="opts">
+
   <label>Side tracked<select id="side"><option value="A">Auto</option><option value="L">Left</option><option value="R">Right</option></select></label>
   <label>Playback speed<select id="spd"><option>0.25</option><option>0.5</option><option selected>1</option></select></label>
   <label>Height (cm)<input id="ht" type="number" value="175" min="100" max="230"></label>
   <label>Save video<select id="rec"><option value="1">Yes</option><option value="0">No</option></select></label>
  </div>
+<!-- Effort Intensity Dropdown -->
+<div class="control-group" style="margin-top: 16px;">
+  <label for="runMode">Effort Intensity</label>
+  <select id="runMode">
+    <option value="tempo" selected>Threshold / Hyrox Pace</option>
+    <option value="easy">Easy / LSD Pace</option>
+  </select>
+  <span style="font-size: 11px; color: #8b9bb0; margin-top: 2px;">⚡ Adjusts cadence/gait scoring targets for Zone 2 vs fast intervals.</span>
+</div>
  <div id="chips" class="grid"></div><ul id="cm"></ul><div id="sum"></div>
 </main>
 <section id="h" hidden></section>
