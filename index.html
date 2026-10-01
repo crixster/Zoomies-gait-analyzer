@@ -16,7 +16,7 @@ nav button.on{color:var(--tx);border-color:var(--L)}
 main,section{max-width:760px;margin:auto;padding:0 12px 24px}
 .stage{position:relative;background:#0c141b;border-radius:10px;overflow:hidden;min-height:180px}
 canvas{width:100%;display:block}
-#ph{position:absolute;inset:0;display:grid;place-items:center;color:var(--mu);text-align:center;padding:20px}
+
 #status{position:absolute;left:8px;bottom:6px;font-size:12px;color:var(--mu)}
 .row{display:flex;gap:8px;margin:10px 0;flex-wrap:wrap}
 button,.btn{background:var(--pn);color:var(--tx);border:1px solid var(--ln);border-radius:8px;padding:10px 14px;font:inherit;cursor:pointer}
@@ -39,7 +39,8 @@ video.rv{width:100%;border-radius:8px;margin:8px 0;background:#000}
 </style></head><body>
 <header><h1>Stride<i>Lab</i> <b>·</b></h1><nav><button data-t="a" class="on">Analyze</button><button data-t="h">History</button></nav></header>
 <main id="a">
- <div class="stage"><canvas id="cv" width="640" height="360"></canvas><div id="ph">Open the live camera or upload a running video.<br>Best results: runner fully in frame, filmed from the side.</div><div id="status"></div></div>
+ <div id="ph" class="note" style="margin:12px 0">Open the live camera or upload a running video. Best results: runner fully in frame, filmed from the side.</div>
+ <div class="stage"><canvas id="cv" width="640" height="360"></canvas><div id="status"></div></div>
  <div class="row"><button id="bLive">Live camera</button><label class="btn">Upload video<input id="file" type="file" accept="video/*" hidden></label><button id="bFlip" title="Switch camera">Flip</button><button id="bDemo">Demo runner</button></div>
  <div id="scrub" class="row" hidden><button id="sb" title="Back one frame">‹</button><input id="sr" type="range" min="0" max="1" step="0.01" value="0" style="flex:1"><button id="sf" title="Forward one frame">›</button><span id="st" class="note"></span></div>
  <div class="row"><button id="bGo" class="pri" disabled>Start analysis</button></div>
