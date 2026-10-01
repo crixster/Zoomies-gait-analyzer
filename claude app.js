@@ -1,13 +1,3 @@
-/*changes proposed by gemini
-
-Pace-Contextualized Thresholds
-The application evaluates form using static grading rubrics. Biomechanics naturally shift depending on intensity; the ideal cadence, trunk lean, and vertical bounce for a long slow distance recovery run are completely different from those of a 4:15 min/km threshold interval. Adding a parameter for the runner's current pace or perceived exertion would allow the app to dynamically scale its "Good/Warn/Bad" thresholds to match the specific energy system being taxed.   Curved Surface Compatibility
-The current process function strictly assumes the runner is moving over a flat surface, continuously updating the ground baseline (S.g) based on the lowest point reached by the foot. When running on a non-motorized curved treadmill, foot strikes occur higher up on the curve rather than at the absolute bottom of the belt. This flat-ground assumption will skew both the overstriding calculation and the GCT timer. Shifting the foot-strike detection from a spatial y-coordinate threshold to a kinematic velocity threshold (detecting the exact frame the foot's horizontal velocity drops to zero relative to the body) would make the app surface-agnostic.   Sub-Frame Interpolation for Ground Contact
-Standard webcams and phone cameras run at 30 frames per second (fps), meaning each frame represents roughly 33.3 milliseconds. Because efficient ground contact times often hover around 200–240 milliseconds, a 33ms margin of error on both the landing and toe-off frames renders the GCT metric highly volatile. You can improve this by implementing sub-frame interpolation—calculating the velocity of the ankle landmark in the frames immediately preceding and following contact to mathematically estimate the exact millisecond of impact between frames.   Upper Body Rotational Tracking
-The current upper body tracking is limited to the sagittal arm angle (elbow) and forward trunk lean (lean). By monitoring the horizontal distance between the left and right shoulder landmarks over time, you could track transverse plane rotation. Excessive shoulder rotation often points to a crossover gait or core instability during heavy fatigue states, which is highly relevant for hybrid conditioning.   
-
-*/
-
 let PoseLandmarker,FilesetResolver;
 const $=s=>document.querySelector(s),cv=$('#cv'),ctx=cv.getContext('2d'),vid=$('#vid');
 let lm,mode=null,stream,facing='environment',running=false,rec,chunks=[],S,lastT=0,fc=0,live={rows:[]};
@@ -33,7 +23,7 @@ async function loadModel0(){
 
 /* ---------- gait maths ---------- */
 const newIv=()=>({hmin:1e9,hmax:-1e9,sm:0,ovs:0,k:999,ks:0});
-const newSession=()=>{S={steps:[],lean:[],elbow:[],rot:[],iv:newIv(),sg:0,lt:-1,dir:0,g:0,c:[{},{}],gct:[]}};
+const newSession=()=>{S={steps:[],lean:[],elbow:[],iv:newIv(),sg:0,lt:-1,dir:0,g:0,c:[{},{}],gct:[]}};
 function ang(a,b,c){const u=[a.x-b.x,a.y-b.y],v=[c.x-b.x,c.y-b.y];return Math.acos(Math.max(-1,Math.min(1,(u[0]*v[0]+u[1]*v[1])/((Math.hypot(...u)*Math.hypot(...v))||1))))*180/Math.PI}
 function process(L,w,h,t){
  const P=i=>({x:L[i].x*w,y:L[i].y*h});
@@ -44,34 +34,12 @@ function process(L,w,h,t){
  const tl=Math.hypot(sh.x-hp.x,sh.y-hp.y)||1,ll=(Math.hypot(hp.x-kn.x,hp.y-kn.y)+Math.hypot(kn.x-an.x,kn.y-an.y))||1;
  S.lean.push(Math.atan2((sh.x-hp.x)*dir,hp.y-sh.y)*180/Math.PI);
  S.elbow.push(ang(sh,P(13+o),P(15+o)));
- S.rot.push(Math.abs(L[11].x - L[12].x) * w / tl);
  const iv=S.iv,hy=(L[23].y+L[24].y)/2*h,hx=(L[23].x+L[24].x)/2*w;
  iv.hmin=Math.min(iv.hmin,hy);iv.hmax=Math.max(iv.hmax,hy);
  [0,1].forEach(s=>{const a=ang(P(23+s),P(25+s),P(27+s));if(a<iv.k){iv.k=a;iv.ks=s}});
  const aL=P(27),aR=P(28),sep=(aL.x-aR.x)*dir,sg=sep>0?1:-1;
- 
- const fy=[0,1].map(s=>L[29+s].y*h);
- fy.forEach((y,s)=>{
-  const c=S.c[s];
-  if(!c.py){c.py=y;c.pt=t;return;}
-  const vy=(y-c.py)/(t-c.pt);
-  const isLow=y>hy+ll*0.35;
-  const threshold=ll*1.5;
-  const on=isLow&&Math.abs(vy)<threshold;
-  
-  if(on&&!c.on){
-   c.on=1;
-   const prevVy=c.pvy||0;
-   const ratio=Math.abs(vy-prevVy)>0?(threshold-Math.abs(prevVy))/Math.abs(vy-prevVy):0.5;
-   c.t0=c.pt+(t-c.pt)*Math.max(0,Math.min(1,ratio));
-  }else if(!on&&c.on){
-   c.on=0;
-   const d=(t-c.t0)*1000;
-   if(d>80&&d<450)S.gct.push(d);
-  }
-  c.pvy=vy;c.py=y;c.pt=t;
- });
- 
+ const fy=[0,1].map(s=>Math.max(L[29+s].y,L[31+s].y)*h);S.g=Math.max(fy[0],fy[1],S.g-ll*.002);
+ fy.forEach((y,s)=>{const c=S.c[s],on=y>S.g-.07*ll;if(on&&!c.on){c.on=1;c.t0=t}else if(!on&&c.on){c.on=0;const d=(t-c.t0)*1000;if(d>80&&d<450)S.gct.push(d)}});
  if(Math.abs(sep)>iv.sm){iv.sm=Math.abs(sep);iv.ovs=((sep>0?aL.x:aR.x)-hx)*dir/ll}
  if(!S.sg)S.sg=sg;
  else if(sg!==S.sg&&iv.sm>.12*ll&&t-S.lt>.2){
@@ -82,18 +50,17 @@ function agg(n){
  const st=S.steps.slice(-n),f=-(n===Infinity?1e9:120),m={},ks=[0,1].map(s=>avg(st.filter(x=>x.ks===s).map(x=>x.k)));
  m.cad=st.length>2?60*(st.length-1)/(st[st.length-1].t-st[0].t):NaN;
  m.lean=avg(S.lean.slice(f));m.ovs=avg(st.map(x=>x.ovs))*100;m.vo=avg(st.map(x=>x.vo));
- m.knee=avg(st.map(x=>x.k));m.gct=avg(S.gct.slice(n===Infinity?0:-16));m.elbow=avg(S.elbow.slice(f));m.rot=avg(S.rot.slice(f))*100;m.asym=Math.abs(ks[0]-ks[1]);return m}
+ m.knee=avg(st.map(x=>x.k));m.gct=avg(S.gct.slice(n===Infinity?0:-16));m.elbow=avg(S.elbow.slice(f));m.asym=Math.abs(ks[0]-ks[1]);return m}
 const G=0,W=1,B=2,cl=['good','warn','bad'];
 const R={
- cad:['Cadence',' spm',0,v=>v<170?[B,'Low cadence for interval pacing – aim closer to 175-185 spm to reduce braking forces.']:v<175?[W,'Slightly low cadence for threshold speeds.']:v<=195?[G,'Cadence is dialed in for this pace.']:[W,'Extremely high cadence – ensure you are driving power, not just spinning wheels.']],
- lean:['Trunk lean','°',1,v=>v<2?[B,'Too upright for speed – lean slightly forward from the ankles to drive the belt.']:v<5?[W,'A bit upright – let gravity assist your forward momentum.']:v<=14?[G,'Excellent forward lean for high-intensity pacing.']:v<=18?[W,'Slightly heavy lean – check you aren\'t folding at the waist.']:[B,'Excessive lean – stand taller and engage the core.']],
- ovs:['Foot reach','% leg',0,v=>v<35?[G,'Landing cleanly under the center of mass.']:v<45?[W,'Reaching slightly ahead – pull the foot back under the hips faster.']:[B,'Severe overstriding – highly inefficient for curved belts.']],
- vo:['Bounce','cm',1,v=>v<=8?[G,'Smooth, horizontal power delivery.']:v<=11?[W,'Moderate bounce – direct your push back into the belt, not upward.']:[B,'Excessive vertical oscillation – wasted energy.']],
- knee:['Heel recovery','° knee',0,v=>v<=100?[G,'Excellent hamstring fold and heel recovery for speed.']:v<=120?[W,'Moderate heel lift – snap the heel up faster after push-off.']:[B,'Swing leg is too straight – you are dragging the recovery phase.']],
- elbow:['Arm angle','°',0,v=>v>=70&&v<=110?[G,'Solid, efficient arm carriage.']:v>110&&v<=130?[W,'Arms opening up – lock elbows closer to 90° for better drive.']:v<70&&v>=55?[W,'Arms too tight – relax shoulders.']:[B,'Inefficient arm mechanics – fix elbow angle.']],
- rot:['Shoulder Sway','% ',0,v=>v<=18?[G,'Quiet upper body, solid core stability.']:v<=30?[W,'Noticeable shoulder rotation – keep the core braced to prevent crossover.']:[B,'Heavy transverse rotation – you are bleeding energy laterally.']],
- asym:['L/R knee diff','°',0,v=>v<=8?[G,'Leg mechanics look symmetrical.']:v<=15?[W,'Mild asymmetry detected.']:[B,'Noticeable asymmetry – check for compensations or fatigue.']],
- gct:['Ground contact',' ms',0,v=>v<=220?[G,'Sharp, explosive ground contact.']:v<=260?[W,'Slightly long contact for this speed – focus on pulling the foot off the belt.']:[B,'Heavy, slow ground contact – increase cadence and pull.']]};
+ cad:['Cadence',' spm',0,v=>v<160?[B,'Low cadence – shorten your stride and aim for roughly 170–180 steps/min.']:v<170?[W,'Cadence is a little low; a small increase usually softens impact.']:v<=195?[G,'Cadence is in an efficient range.']:[W,'Very high cadence – fine when fast, just avoid choppy, tiny steps.']],
+ lean:['Trunk lean','°',1,v=>v<0?[B,'Leaning backward – lean slightly forward from the ankles.']:v<2?[W,'Very upright – a gentle forward lean from the ankles helps propulsion.']:v<=10?[G,'Nice slight forward lean.']:v<=15?[W,'Lean is a bit strong – check you are not folding at the waist.']:[B,'Excessive forward lean – stand taller and engage your core.']],
+ ovs:['Foot reach','% leg',0,v=>v<32?[G,'Foot lands close under your body – good.']:v<42?[W,'Foot is landing somewhat out front; increase cadence and land nearer your hips.']:[B,'Overstriding – the foot reaches well ahead of the hips. Shorten stride, raise cadence.']],
+ vo:['Bounce','cm',1,v=>v<=7?[G,'Smooth, efficient vertical motion.']:v<=10?[W,'Moderate bounce – think “run quiet” and drive forward, not up.']:[B,'Lots of vertical bounce – wasted energy. Shorten stride and push forward.']],
+ knee:['Heel recovery','° knee',0,v=>v<=110?[G,'Good heel recovery on the swing leg.']:v<=125?[W,'Limited heel recovery – work on hamstring drive and knee lift.']:[B,'Swing leg barely folds – drills like A-skips and butt kicks can help.']],
+ elbow:['Arm angle','°',0,v=>v>=70&&v<=110?[G,'Arm angle is in a good range.']:v>110&&v<=130?[W,'Arms a bit open – bend elbows closer to 90°.']:v<70&&v>=55?[W,'Arms tightly folded – relax the shoulders and open slightly.']:[B,v>130?'Arms nearly straight – bend elbows to about 90°.':'Arms very tight – relax and open your elbows.']],
+ asym:['L/R knee diff','°',0,v=>v<=8?[G,'Left and right legs look symmetrical.']:v<=15?[W,'Mild left/right difference in leg fold.']:[B,'Noticeable left/right asymmetry – film again, and consider a gait check if it persists.']],
+ gct:['Ground contact',' ms',0,v=>v<=240?[G,'Short, springy ground contact.']:v<=300?[W,'Moderate ground contact – quicker, lighter steps will shorten it.']:[B,'Long ground contact – try a quicker cadence and land closer to your hips.']]};
 function rows(n){const m=agg(n);return Object.keys(R).map(k=>{const[l,u,d,f]=R[k],v=m[k];if(!isFinite(v))return{label:l,val:'–',c:'',msg:''};const[c,msg]=f(v);return{label:l,val:v.toFixed(d)+u,c,msg}})}
 const score=r=>{const x=r.filter(i=>i.c!=='');return x.length?Math.round(100*avg(x.map(i=>1-i.c/2))):0};
 
