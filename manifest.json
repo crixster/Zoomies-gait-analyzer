@@ -1,1 +1,42 @@
-{"id":"./index.html","name":"Zoomies - Running gait analyzer","short_name":"Zoomies","description":"Running gait analysis from video or live camera, right in your browser.","start_url":"./index.html","scope":"./","display":"standalone","orientation":"any","background_color":"#fefeff","theme_color":"#16222e","categories":["health","fitness","sports"],"icons":[{"src":"icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},{"src":"icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},{"src":"icon-maskable-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}]}
+{
+  "id": "./index.html",
+  "name": "Zoomies - Running Gait Analyzer",
+  "short_name": "Zoomies",
+  "description": "Running gait analysis from video or live camera, right in your browser.",
+
+  "start_url": "./index.html",
+  "scope": "./",
+
+  "display": "standalone",
+  "orientation": "any",
+
+  "theme_color": "#16222e",
+  "background_color": "#fefeff",
+
+  "categories": [
+    "health",
+    "fitness",
+    "sports"
+  ],
+
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
