@@ -2,46 +2,17 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#16222e">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg"><link rel="apple-touch-icon" href="icon.svg">
-<title>StrideLab – Running Gait Analysis</title>
-<style>
-:root{--bg:#16222e;--pn:#1f2f3e;--ln:#34495c;--tx:#eef3f7;--mu:#93a6b7;--L:#ff8a5c;--R:#5cc8ff;--good:#4ade80;--warn:#fbbf24;--bad:#f87171;color-scheme:dark}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 "Avenir Next","Segoe UI",system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
-header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px}
-h1{font-size:20px;margin:0;letter-spacing:-.02em}h1 i{font-style:normal;color:var(--L)}h1 b{color:var(--R)}
-nav button{background:none;border:0;color:var(--mu);font:inherit;padding:6px 10px;border-bottom:2px solid transparent}
-nav button.on{color:var(--tx);border-color:var(--L)}
-main,section{max-width:760px;margin:auto;padding:0 12px 24px}
-.stage{position:relative;background:#0c141b;border-radius:10px;overflow:hidden;min-height:180px}
-canvas{width:100%;display:block}
-
-#status{position:absolute;left:8px;bottom:6px;font-size:12px;color:var(--mu)}
-.row{display:flex;gap:8px;margin:10px 0;flex-wrap:wrap}
-button,.btn{background:var(--pn);color:var(--tx);border:1px solid var(--ln);border-radius:8px;padding:10px 14px;font:inherit;cursor:pointer}
-.btn{display:inline-block}button:disabled{opacity:.4}
-.pri{background:var(--L);border-color:var(--L);color:#1a1008;font-weight:700;flex:1}.pri.stop{background:var(--bad);border-color:var(--bad)}
-.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;font-size:13px;color:var(--mu)}
-.opts label{display:flex;flex-direction:column;gap:3px}
-select,input[type=number]{background:var(--pn);color:var(--tx);border:1px solid var(--ln);border-radius:8px;padding:8px;font:inherit}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px;margin:12px 0}
-.chip{background:var(--pn);border-radius:8px;padding:8px 10px;border-left:4px solid var(--ln)}
-.chip b{display:block;font-size:20px;font-variant-numeric:tabular-nums}.chip small{color:var(--mu)}
-.chip.good{border-color:var(--good)}.chip.warn{border-color:var(--warn)}.chip.bad{border-color:var(--bad)}
-ul{padding-left:18px;margin:8px 0}li{margin:4px 0}li.warn{color:var(--warn)}li.bad{color:var(--bad)}li.good{color:var(--good)}
-.card{background:var(--pn);border-radius:10px;padding:12px;margin:12px 0}
-.score{font-size:44px;font-weight:800;letter-spacing:-.03em}
-.note{color:var(--mu);font-size:12.5px}
-video.rv{width:100%;border-radius:8px;margin:8px 0;background:#000}
-.fv{position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}table{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}td,th{padding:5px 6px;border-bottom:1px solid var(--ln);text-align:left}td.good{color:var(--good)}td.warn{color:var(--warn)}td.bad{color:var(--bad)}input[type=range]{accent-color:var(--L)}
-</style></head><body>
-<header><h1>Stride<i>Lab</i> <b>·</b></h1><nav><button data-t="a" class="on">Analyze</button><button data-t="h">History</button></nav></header>
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Zoomies"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" type="image/png" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Zoomies - Running gait analyzer</title>
+<link rel="stylesheet" href="styles.css"></head><body>
+<div id="splash" role="img" aria-label="Zoomies"><img id="splashImg" src="splash-screen.gif" alt="" decoding="async"></div>
+<script src="splash.js"></script>
+<header><h1><i>Zoomies</i> <b>-</b> Running Gait Analyzer</h1><nav><button data-t="a" class="on">Analyze</button><button data-t="h">History</button></nav></header>
 <main id="a">
- <div id="ph" class="note" style="margin:12px 0">Open the live camera or upload a running video. Best results: runner fully in frame, filmed from the side.</div>
  <div class="stage"><canvas id="cv" width="640" height="360"></canvas><div id="status"></div></div>
- <div class="row"><button id="bLive">Live camera</button><label class="btn">Upload video<input id="file" type="file" accept="video/*" hidden></label><button id="bFlip" title="Switch camera">Flip</button><button id="bDemo">Demo runner</button></div>
+ <div id="help" class="card note" hidden><p style="color:var(--tx)">Open the live camera or upload a running video. Best results: runner fully in frame, filmed from the side.</p><p>Left leg is drawn coral, right leg blue. Numbers come from 2D pose estimation, so they are estimates for form coaching, not clinical measurements. Run at a steady pace for 10+ steps for stable readings. Ground contact time is estimated from video frames (about ±35 ms at 30 fps). Step through uploaded videos frame by frame with the slider and ‹ › buttons before pressing Start.</p></div>
+ <div class="row"><button id="bLive">Live camera</button><label class="btn">Upload video<input id="file" type="file" accept="video/*" hidden></label><button id="bFlip" title="Switch camera">Flip</button><button id="bHelp" title="Help and demo runner" aria-label="Help and demo runner" aria-expanded="false" aria-controls="help">?</button></div>
  <div id="scrub" class="row" hidden><button id="sb" title="Back one frame">‹</button><input id="sr" type="range" min="0" max="1" step="0.01" value="0" style="flex:1"><button id="sf" title="Forward one frame">›</button><span id="st" class="note"></span></div>
  <div class="row"><button id="bGo" class="pri" disabled>Start analysis</button></div>
  <div class="opts">
@@ -51,211 +22,8 @@ video.rv{width:100%;border-radius:8px;margin:8px 0;background:#000}
   <label>Save video<select id="rec"><option value="1">Yes</option><option value="0">No</option></select></label>
  </div>
  <div id="chips" class="grid"></div><ul id="cm"></ul><div id="sum"></div>
- <p class="note">Left leg is drawn coral, right leg blue. Numbers come from 2D pose estimation, so they are estimates for form coaching, not clinical measurements. Run at a steady pace for 10+ steps for stable readings. Ground contact time is estimated from video frames (about ±35 ms at 30 fps). Step through uploaded videos frame by frame with the slider and ‹ › buttons before pressing Start.</p>
 </main>
 <section id="h" hidden></section>
 <video id="vid" class="fv" playsinline muted></video>
 
-<script type="module">
-let PoseLandmarker,FilesetResolver;
-const $=s=>document.querySelector(s),cv=$('#cv'),ctx=cv.getContext('2d'),vid=$('#vid');
-let lm,mode=null,stream,facing='environment',running=false,rec,chunks=[],S,lastT=0,fc=0,live={rows:[]};
-const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:NaN;
-const next=f=>mode!=='demo'&&vid.requestVideoFrameCallback?vid.requestVideoFrameCallback(f):requestAnimationFrame(f);
-const say=t=>$('#status').textContent=t||'';
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
-
-/* ---------- storage ---------- */
-const db=new Promise(r=>{const q=indexedDB.open('stridelab',1);q.onupgradeneeded=()=>q.result.createObjectStore('s',{keyPath:'id'});q.onsuccess=()=>r(q.result)});
-const tx=async(m,f)=>{const d=await db;return new Promise((ok,no)=>{const t=d.transaction('s',m),q=f(t.objectStore('s'));t.oncomplete=()=>ok(q.result);t.onerror=()=>no(t.error)})};
-
-/* ---------- model ---------- */
-async function loadModel(){try{await loadModel0()}catch(e){say('');throw new Error('Pose model could not load here (offline or network blocked). Try Demo runner, or host the files on HTTPS.')}}
-async function loadModel0(){
- if(lm)return;say('Loading pose model (first run needs internet)…');
- if(!PoseLandmarker)({PoseLandmarker,FilesetResolver}=await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs"));
- const fs=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
- const mk=d=>PoseLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:"https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",delegate:d},runningMode:"VIDEO",numPoses:1});
- try{lm=await mk("GPU")}catch(e){lm=await mk("CPU")}
- say('');
-}
-
-/* ---------- gait maths ---------- */
-const newIv=()=>({hmin:1e9,hmax:-1e9,sm:0,ovs:0,k:999,ks:0});
-const newSession=()=>{S={steps:[],lean:[],elbow:[],iv:newIv(),sg:0,lt:-1,dir:0,g:0,c:[{},{}],gct:[]}};
-function ang(a,b,c){const u=[a.x-b.x,a.y-b.y],v=[c.x-b.x,c.y-b.y];return Math.acos(Math.max(-1,Math.min(1,(u[0]*v[0]+u[1]*v[1])/((Math.hypot(...u)*Math.hypot(...v))||1))))*180/Math.PI}
-function process(L,w,h,t){
- const P=i=>({x:L[i].x*w,y:L[i].y*h});
- const sd=$('#side').value,vis=o=>[11,23,25,27].reduce((s,i)=>s+L[i+o].visibility,0);
- const o=sd==='L'?0:sd==='R'?1:(vis(0)>=vis(1)?0:1);
- const sh=P(11+o),hp=P(23+o),kn=P(25+o),an=P(27+o);
- S.dir=S.dir*.95+(L[31].x-L[29].x)+(L[32].x-L[30].x);const dir=S.dir<0?-1:1;
- const tl=Math.hypot(sh.x-hp.x,sh.y-hp.y)||1,ll=(Math.hypot(hp.x-kn.x,hp.y-kn.y)+Math.hypot(kn.x-an.x,kn.y-an.y))||1;
- S.lean.push(Math.atan2((sh.x-hp.x)*dir,hp.y-sh.y)*180/Math.PI);
- S.elbow.push(ang(sh,P(13+o),P(15+o)));
- const iv=S.iv,hy=(L[23].y+L[24].y)/2*h,hx=(L[23].x+L[24].x)/2*w;
- iv.hmin=Math.min(iv.hmin,hy);iv.hmax=Math.max(iv.hmax,hy);
- [0,1].forEach(s=>{const a=ang(P(23+s),P(25+s),P(27+s));if(a<iv.k){iv.k=a;iv.ks=s}});
- const aL=P(27),aR=P(28),sep=(aL.x-aR.x)*dir,sg=sep>0?1:-1;
- const fy=[0,1].map(s=>Math.max(L[29+s].y,L[31+s].y)*h);S.g=Math.max(fy[0],fy[1],S.g-ll*.002);
- fy.forEach((y,s)=>{const c=S.c[s],on=y>S.g-.07*ll;if(on&&!c.on){c.on=1;c.t0=t}else if(!on&&c.on){c.on=0;const d=(t-c.t0)*1000;if(d>80&&d<450)S.gct.push(d)}});
- if(Math.abs(sep)>iv.sm){iv.sm=Math.abs(sep);iv.ovs=((sep>0?aL.x:aR.x)-hx)*dir/ll}
- if(!S.sg)S.sg=sg;
- else if(sg!==S.sg&&iv.sm>.12*ll&&t-S.lt>.2){
-  S.steps.push({t,ovs:iv.ovs,vo:(iv.hmax-iv.hmin)/tl*.29*(+$('#ht').value||175),k:iv.k,ks:iv.ks});
-  S.iv=newIv();S.lt=t;S.sg=sg}
-}
-function agg(n){
- const st=S.steps.slice(-n),f=-(n===Infinity?1e9:120),m={},ks=[0,1].map(s=>avg(st.filter(x=>x.ks===s).map(x=>x.k)));
- m.cad=st.length>2?60*(st.length-1)/(st[st.length-1].t-st[0].t):NaN;
- m.lean=avg(S.lean.slice(f));m.ovs=avg(st.map(x=>x.ovs))*100;m.vo=avg(st.map(x=>x.vo));
- m.knee=avg(st.map(x=>x.k));m.gct=avg(S.gct.slice(n===Infinity?0:-16));m.elbow=avg(S.elbow.slice(f));m.asym=Math.abs(ks[0]-ks[1]);return m}
-const G=0,W=1,B=2,cl=['good','warn','bad'];
-const R={
- cad:['Cadence',' spm',0,v=>v<160?[B,'Low cadence – shorten your stride and aim for roughly 170–180 steps/min.']:v<170?[W,'Cadence is a little low; a small increase usually softens impact.']:v<=195?[G,'Cadence is in an efficient range.']:[W,'Very high cadence – fine when fast, just avoid choppy, tiny steps.']],
- lean:['Trunk lean','°',1,v=>v<0?[B,'Leaning backward – lean slightly forward from the ankles.']:v<2?[W,'Very upright – a gentle forward lean from the ankles helps propulsion.']:v<=10?[G,'Nice slight forward lean.']:v<=15?[W,'Lean is a bit strong – check you are not folding at the waist.']:[B,'Excessive forward lean – stand taller and engage your core.']],
- ovs:['Foot reach','% leg',0,v=>v<32?[G,'Foot lands close under your body – good.']:v<42?[W,'Foot is landing somewhat out front; increase cadence and land nearer your hips.']:[B,'Overstriding – the foot reaches well ahead of the hips. Shorten stride, raise cadence.']],
- vo:['Bounce','cm',1,v=>v<=7?[G,'Smooth, efficient vertical motion.']:v<=10?[W,'Moderate bounce – think “run quiet” and drive forward, not up.']:[B,'Lots of vertical bounce – wasted energy. Shorten stride and push forward.']],
- knee:['Heel recovery','° knee',0,v=>v<=110?[G,'Good heel recovery on the swing leg.']:v<=125?[W,'Limited heel recovery – work on hamstring drive and knee lift.']:[B,'Swing leg barely folds – drills like A-skips and butt kicks can help.']],
- elbow:['Arm angle','°',0,v=>v>=70&&v<=110?[G,'Arm angle is in a good range.']:v>110&&v<=130?[W,'Arms a bit open – bend elbows closer to 90°.']:v<70&&v>=55?[W,'Arms tightly folded – relax the shoulders and open slightly.']:[B,v>130?'Arms nearly straight – bend elbows to about 90°.':'Arms very tight – relax and open your elbows.']],
- asym:['L/R knee diff','°',0,v=>v<=8?[G,'Left and right legs look symmetrical.']:v<=15?[W,'Mild left/right difference in leg fold.']:[B,'Noticeable left/right asymmetry – film again, and consider a gait check if it persists.']],
- gct:['Ground contact',' ms',0,v=>v<=240?[G,'Short, springy ground contact.']:v<=300?[W,'Moderate ground contact – quicker, lighter steps will shorten it.']:[B,'Long ground contact – try a quicker cadence and land closer to your hips.']]};
-function rows(n){const m=agg(n);return Object.keys(R).map(k=>{const[l,u,d,f]=R[k],v=m[k];if(!isFinite(v))return{label:l,val:'–',c:'',msg:''};const[c,msg]=f(v);return{label:l,val:v.toFixed(d)+u,c,msg}})}
-const score=r=>{const x=r.filter(i=>i.c!=='');return x.length?Math.round(100*avg(x.map(i=>1-i.c/2))):0};
-
-/* ---------- drawing ---------- */
-const CN=[[11,12],[23,24],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,25],[25,27],[24,26],[26,28],[27,29],[29,31],[27,31],[28,30],[30,32],[28,32]];
-function draw(L,w,h){
- const k=w/640,V=i=>L[i].visibility>.4,P=i=>[L[i].x*w,L[i].y*h];
- ctx.lineCap='round';ctx.lineWidth=4*k;ctx.shadowColor='#000';ctx.shadowBlur=6*k;
- CN.forEach(([a,b])=>{if(!V(a)||!V(b))return;ctx.strokeStyle=(a<=12&&b<=12)||(a===23&&b===24)?'#eef3f7':a%2?'#ff8a5c':'#5cc8ff';ctx.beginPath();ctx.moveTo(...P(a));ctx.lineTo(...P(b));ctx.stroke()});
- ctx.shadowBlur=0;
- for(let i=11;i<33;i++)if(V(i)){const[x,y]=P(i);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,4*k,0,7);ctx.fill()}
- if(V(0)){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(...P(0),6*k,0,7);ctx.fill()}
- ctx.font=`bold ${13*k}px sans-serif`;
- [0,1].forEach(s=>{if(V(23+s)&&V(25+s)&&V(27+s)){const a=ang({x:P(23+s)[0],y:P(23+s)[1]},{x:P(25+s)[0],y:P(25+s)[1]},{x:P(27+s)[0],y:P(27+s)[1]});ctx.fillStyle=s?'#5cc8ff':'#ff8a5c';ctx.fillText(Math.round(a)+'°',P(25+s)[0]+8*k,P(25+s)[1])}});
- if(V(11)&&V(12)&&V(23)&&V(24)){const hx=(P(23)[0]+P(24)[0])/2,hy=(P(23)[1]+P(24)[1])/2,sy=(P(11)[1]+P(12)[1])/2;ctx.setLineDash([6*k,6*k]);ctx.strokeStyle='#ffffff88';ctx.lineWidth=2*k;ctx.beginPath();ctx.moveTo(hx,hy);ctx.lineTo(hx,sy-10*k);ctx.stroke();ctx.setLineDash([])}
-}
-function hud(w,h){
- if(!running)return;const k=w/640,r=live.rows;
- ctx.fillStyle='#000a';ctx.fillRect(6*k,6*k,170*k,r.length?74*k:24*k);ctx.fillStyle='#fff';ctx.font=`bold ${13*k}px sans-serif`;
- ctx.fillStyle='#f87171';ctx.beginPath();ctx.arc(18*k,18*k,5*k,0,7);ctx.fill();ctx.fillStyle='#fff';ctx.fillText('ANALYZING  Score '+(r.length?score(r):'–'),30*k,23*k);
- r.slice(0,4).forEach((x,i)=>{ctx.fillStyle=['#4ade80','#fbbf24','#f87171'][x.c]||'#fff';ctx.fillText(x.label+': '+x.val,14*k,(42+i*14)*k)});
-}
-
-/* ---------- frame loop ---------- */
-function frame(){
- let L,w,h,ts=Math.max(performance.now(),lastT+1);lastT=ts;
- if(mode==='demo'){w=640;h=360;if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}bg(ts/1000);L=synth(ts/1000)}
- else{if(vid.readyState<2||!lm)return;w=vid.videoWidth;h=vid.videoHeight;if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
-  ctx.drawImage(vid,0,0);L=lm.detectForVideo(vid,ts).landmarks[0]}
- if(L){draw(L,w,h);if(running){process(L,w,h,mode==='file'?vid.currentTime:ts/1000);if(++fc%12===0){live.rows=rows(8);paint(live.rows)}}}
- hud(w,h);
-}
-function bg(t){ctx.fillStyle='#233648';ctx.fillRect(0,0,640,360);ctx.fillStyle='#7a4636';ctx.fillRect(0,342,640,18);ctx.fillStyle='#d9c3b8';
- for(let i=0;i<9;i++)ctx.fillRect(((i*80-t*220)%640+640)%640,348,40,3)}
-function synth(t){
- const asp=.5625,ph=2*Math.PI*t*(172/2/60),a=Array.from({length:33},()=>({x:.5,y:.5,visibility:1}));
- const set=(i,x,y)=>{a[i].x=.5+x*asp;a[i].y=y};
- const hy=.52+.012*Math.cos(2*ph),lean=.12,tl=.2,sy=hy-tl*Math.cos(lean),sx=tl*Math.sin(lean);
- set(23,0,hy);set(24,0,hy);set(11,sx,sy);set(12,sx,sy);set(0,sx+.05,sy-.07);set(7,sx+.01,sy-.06);set(8,sx+.01,sy-.06);
- [0,1].forEach(s=>{const p=ph+s*Math.PI,th=.32*Math.sin(p),fl=.12+1.3*Math.max(0,Math.cos(p))**.6,
-  kx=.2*Math.sin(th),ky=hy+.2*Math.cos(th),ax=kx+.2*Math.sin(th-fl),ay=ky+.2*Math.cos(th-fl);
-  set(25+s,kx,ky);set(27+s,ax,ay);set(29+s,ax-.02,ay+.02);set(31+s,ax+.05,ay+.025);
-  const b=-.5*Math.sin(p),ex=sx+.1*Math.sin(b),ey=sy+.1*Math.cos(b),wx=ex+.1*Math.sin(b+1.5),wy=ey+.1*Math.cos(b+1.5);
-  set(13+s,ex,ey);[15,17,19,21].forEach(i=>set(i+s,wx,wy))});
- return a}
-let loopId=0;function tick(id){if(id!==loopId||!mode)return;if(!(mode==='file'&&vid.paused))frame();next(()=>tick(id))}
-function paint(r){
- $('#chips').innerHTML=r.map(x=>`<div class="chip ${cl[x.c]||''}"><b>${x.val}</b><small>${x.label}</small></div>`).join('');
- $('#cm').innerHTML=r.filter(x=>x.msg).sort((a,b)=>b.c-a.c).slice(0,3).map(x=>`<li class="${cl[x.c]}">${x.msg}</li>`).join('');
-}
-
-/* ---------- sources ---------- */
-async function openLive(){
- try{await loadModel();stopSrc();
-  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:1280},height:{ideal:720}},audio:false});
-  vid.srcObject=stream;await vid.play();mode='live';ready();
- }catch(e){say(/NotAllowed|NotFound|Permission/.test(e.name+e.message)?'Camera unavailable – allow camera access (HTTPS required).':e.message)}
-}
-async function openFile(f){
- await loadModel();stopSrc();vid.srcObject=null;vid.src=URL.createObjectURL(f);vid.loop=false;
- await new Promise(r=>vid.onloadeddata=r);$('#sr').max=vid.duration;vid.currentTime=.05;await new Promise(r=>vid.onseeked=r);
- mode='file';ready();frame();
-}
-function ready(){$('#ph').hidden=true;$('#bGo').disabled=false;$('#bFlip').hidden=mode!=='live';$('#scrub').hidden=mode!=='file';say('');const id=++loopId;next(()=>tick(id))}
-function stopSrc(){running=false;mode=null;$('#scrub').hidden=true;stream&&stream.getTracks().forEach(t=>t.stop());stream=null;vid.pause()}
-
-/* ---------- session ---------- */
-function startRec(){
- const mt=['video/mp4;codecs=avc1','video/webm;codecs=vp9','video/webm'].find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported(m));
- if(!mt){say('Video saving not supported in this browser');rec=null;return}
- chunks=[];rec=new MediaRecorder(cv.captureStream(30),{mimeType:mt,videoBitsPerSecond:4e6});rec.mt=mt.split(';')[0];
- rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);rec.start(1000)}
-const stopRec=()=>new Promise(r=>{rec.onstop=()=>r(new Blob(chunks,{type:rec.mt}));rec.stop()});
-async function start(){
- newSession();live={rows:[]};fc=0;running=true;$('#sum').innerHTML='';$('#bGo').textContent='Stop and save';$('#bGo').classList.add('stop');
- if($('#rec').value==='1')startRec();else rec=null;
- if(mode==='file'){vid.playbackRate=+$('#spd').value;if(vid.ended)vid.currentTime=0;await vid.play()}
-}
-async function finish(){
- if(!running)return;running=false;vid.pause();
- $('#bGo').textContent='Start analysis';$('#bGo').classList.remove('stop');
- const r=rows(Infinity),ok=S.steps.length>=4;
- const sum={score:ok?score(r):0,rows:r,steps:S.steps.length,ok};
- let blob=null;if(rec&&rec.state!=='inactive')blob=await stopRec();
- $('#sum').innerHTML=sumHTML(sum);paint(r);
- if(blob&&ok||blob){await tx('readwrite',s=>s.put({id:Date.now(),date:new Date().toLocaleString(),mode,sum,blob}));say('Saved to History');renderHist()}
- if(mode==='file'){vid.currentTime=.05}
-}
-function sumHTML(s){
- if(!s.ok)return`<div class="card"><b>Not enough steps detected.</b><br>Keep the full body in frame, film from the side, and run at least 10 steps across the shot.</div>`;
- const tips=s.rows.filter(x=>x.c>0).sort((a,b)=>b.c-a.c);
- return`<div class="card"><div class="score">${s.score}<small style="font-size:16px;color:var(--mu)"> / 100 form score</small></div><div class="note">${s.steps} steps analysed</div>
- <div class="grid">${s.rows.map(x=>`<div class="chip ${cl[x.c]||''}"><b>${x.val}</b><small>${x.label}</small></div>`).join('')}</div>
- <b>Coaching notes</b><ul>${(tips.length?tips:[{c:0,msg:'Everything measured looks solid. Keep it up!'}]).map(x=>`<li class="${cl[x.c]}">${x.msg}</li>`).join('')}</ul></div>`}
-
-/* ---------- history ---------- */
-let hist=[];
-async function renderHist(){
- hist=(await tx('readonly',s=>s.getAll())).sort((a,b)=>b.id-a.id);const h=$('#h');
- if(!hist.length){h.innerHTML='<div class="card">No saved analyses yet. Run an analysis with “Save video” on and it will appear here.</div>';return}
- h.innerHTML='<div id="cmp"></div>'+(hist.length>1?'<div class="row"><button id="bCmp" disabled>Compare 2 selected</button><span class="note" style="align-self:center">Tick two sessions to view them side by side</span></div>':'')+
- hist.map(x=>{const u=x.blob?URL.createObjectURL(x.blob):'',ext=x.blob&&x.blob.type.includes('mp4')?'mp4':'webm',src={live:'live camera',file:'uploaded video',demo:'demo runner'}[x.mode];
- return`<div class="card"><b>${x.date}</b> <span class="note">${src} · score ${x.sum.score}</span>
- ${u?`<video class="rv" controls playsinline src="${u}"></video>`:''}
- <div class="row">${u?`<a class="btn" href="${u}" download="stridelab-${x.id}.${ext}">Download video</a>`:''}<button data-del="${x.id}">Delete</button><label class="note" style="align-self:center"><input type="checkbox" data-cmp="${x.id}"> Compare</label></div>
- <details><summary>Readings and coaching</summary>${sumHTML(x.sum)}</details></div>`}).join('');
-}
-function compare(a,b){
- const v=x=>x.blob?`<video class="rv" muted playsinline src="${URL.createObjectURL(x.blob)}"></video>`:'',
- td=r=>`<td class="${cl[r.c]||''}">${r.val}</td>`;
- $('#cmp').innerHTML=`<div class="card"><b>Side by side</b><div class="two"><div><div class="note">Earlier · score ${a.sum.score}</div>${v(a)}</div><div><div class="note">Later · score ${b.sum.score}</div>${v(b)}</div></div>
- <div class="row"><button id="cp">Play both</button><button id="cx">Pause</button><button id="cc">Close</button></div>
- <table><tr><th></th><th>Earlier</th><th>Later</th></tr>${a.sum.rows.map(r=>`<tr><td>${r.label}</td>${td(r)}${td(b.sum.rows.find(q=>q.label===r.label)||{val:'–'})}</tr>`).join('')}</table></div>`;
-}
-$('#h').onclick=async e=>{const t=e.target,id=t.dataset.del;
- if(id){if(t.dataset.arm){await tx('readwrite',s=>s.delete(+id));renderHist()}else{t.dataset.arm=1;t.textContent='Tap again to delete'}}
- if(t.id==='bCmp'){const c=[...document.querySelectorAll('[data-cmp]:checked')].map(i=>hist.find(x=>x.id==i.dataset.cmp)).sort((p,q)=>p.id-q.id);compare(c[0],c[1]);$('#cmp').scrollIntoView()}
- if(t.id==='cp')document.querySelectorAll('#cmp video').forEach(v=>{v.currentTime=0;v.play()});
- if(t.id==='cx')document.querySelectorAll('#cmp video').forEach(v=>v.pause());
- if(t.id==='cc')$('#cmp').innerHTML=''};
-$('#h').onchange=()=>{const b=$('#bCmp');if(b)b.disabled=document.querySelectorAll('[data-cmp]:checked').length!==2};
-
-/* ---------- wiring ---------- */
-$('#bLive').onclick=openLive;
-$('#bFlip').onclick=()=>{facing=facing==='environment'?'user':'environment';openLive()};
-$('#file').onchange=e=>e.target.files[0]&&openFile(e.target.files[0]).catch(x=>say(x.message));
-$('#bGo').onclick=()=>running?finish():start();
-$('#spd').onchange=()=>vid.playbackRate=+$('#spd').value;
-vid.onended=()=>mode==='file'&&finish();
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
- document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
- $('#a').hidden=b.dataset.t!=='a';$('#h').hidden=b.dataset.t!=='h';if(b.dataset.t==='h')renderHist()});
-const seek=t=>{if(mode==='file'&&!running)vid.currentTime=Math.max(0,Math.min(vid.duration,t))};
-$('#sr').oninput=e=>seek(+e.target.value);$('#sb').onclick=()=>seek(vid.currentTime-1/30);$('#sf').onclick=()=>seek(vid.currentTime+1/30);
-vid.addEventListener('seeked',()=>{if(mode==='file'&&vid.paused)frame()});
-vid.addEventListener('timeupdate',()=>{$('#sr').value=vid.currentTime;$('#st').textContent=vid.currentTime.toFixed(2)+'s'});
-$('#bDemo').onclick=()=>{stopSrc();vid.srcObject=null;mode='demo';ready()};
-$('#bFlip').hidden=true;renderHist();
-</script></body></html>
+<script src="app.js" defer></script></body></html>
