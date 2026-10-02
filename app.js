@@ -53,11 +53,15 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
 //   cad / lean : [bad below, warn below, good up to, warn up to (bad above)]
 //   vo         : largest "good" bounce in cm        gct  : [good up to, warn up to] in ms
 //   knee       : heel recovery = smallest knee angle, [good up to, warn up to] in degrees (lower = more heel fold)
+// Trunk lean (shoulder-hip line vs vertical) is deliberately tight: lab data puts the most economical lean at roughly 2-4 deg
+// at moderate speed, with a large lean (~8 deg) costing about 8% more energy; comfortable self-selected lean is ~5-8 deg and
+// grows a little with speed. "Good" is therefore ~3-8 deg at tempo, shifting about 1 deg per step up/down in effort, and
+// "bad below" is 0 so only a genuine backward lean is flagged as leaning backwards.
 const MODES = {
-  easy:      { label: 'Easy',      cad: [152, 160, 172, 182], lean: [0, 0, 8, 12],  vo: 10, gct: [260, 300], knee: [110, 130] },
-  tempo:     { label: 'Tempo',     cad: [162, 168, 188, 198], lean: [1, 4, 12, 16], vo: 9,  gct: [240, 280], knee: [105, 125] },
-  threshold: { label: 'Threshold', cad: [168, 174, 192, 200], lean: [2, 5, 14, 18], vo: 8,  gct: [220, 260], knee: [100, 120] },
-  intervals: { label: 'Intervals', cad: [172, 178, 196, 206], lean: [3, 6, 16, 20], vo: 8,  gct: [200, 240], knee: [92, 112] }
+  easy:      { label: 'Easy',      cad: [152, 160, 172, 182], lean: [0, 2, 6, 9],   vo: 10, gct: [260, 300], knee: [110, 130] },
+  tempo:     { label: 'Tempo',     cad: [162, 168, 188, 198], lean: [0, 3, 8, 11],  vo: 9,  gct: [240, 280], knee: [105, 125] },
+  threshold: { label: 'Threshold', cad: [168, 174, 192, 200], lean: [0, 4, 9, 12],  vo: 8,  gct: [220, 260], knee: [100, 120] },
+  intervals: { label: 'Intervals', cad: [172, 178, 196, 206], lean: [0, 5, 10, 14], vo: 8,  gct: [200, 240], knee: [92, 112] }
 };
 const MODE_KEY = 'zoomies.runMode';
 const rmode = () => { const v = $('#runMode') && $('#runMode').value; return MODES[v] ? v : 'tempo'; };
