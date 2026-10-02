@@ -49,7 +49,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
 /* ---------- Run types ---------- */
 
 // Reference ranges per effort. These are coaching heuristics (starting points), NOT biomechanical truth –
-// after 3 confident sessions of a run type your own baseline replaces them.
+// after 3 confident sessions of a run type your own baseline replaces them (except trunk lean, which always uses its fixed range).
 //   cad / lean : [bad below, warn below, good up to, warn up to (bad above)]
 //   vo         : largest "good" bounce in cm        gct  : [good up to, warn up to] in ms
 //   knee       : heel recovery = smallest knee angle, [good up to, warn up to] in degrees (lower = more heel fold)
@@ -496,7 +496,7 @@ function analyze(n) {
     if (c < LOWCONF) return { k, label: l, val, c: '', msg: '' };
     let [cc, msg] = f(v), z;
     const e = b[k];
-    if (e && e.n >= 3 && !(k === 'ovs' && v < -10)) {                       // an implausible reading is reported as such, not compared
+    if (e && e.n >= 3 && k !== 'lean' && !(k === 'ovs' && v < -10)) {       // trunk lean always uses the fixed ranges (a personal baseline would normalise a bad habit); an implausible foot reach is reported as such, not compared
       z = (v - e.mean) / Math.max(Math.sqrt(e.m2 / (e.n - 1)), FLOOR[k]);
       const ref = cc !== G ? ' Reference range: ' + msg : '';
       const dev = UP[k] ? z : Math.abs(z);
