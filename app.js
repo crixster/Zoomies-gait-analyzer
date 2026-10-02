@@ -34,14 +34,15 @@ const stdev = a => { if (a.length < 3) return NaN; const m = avg(a); return Math
 const rmse = (a, b) => a && b && a.length && a.length === b.length ? Math.sqrt(avg(a.map((x, i) => (x - b[i]) ** 2))) : NaN;
 // The callback gets the video frame's own metadata (mediaTime = exact position in the file, captureTime = camera capture clock)
 const next = f => mode !== 'demo' && vid.requestVideoFrameCallback
-  ? vid.requestVideoFrameCallback((now, md) => f({ now, mt: md && md.mediaTime, ct: md && md.captureTime }))
+  ? vid.requestVideoFrameCallback((now, md) => f({ now, mt: md && md.mediaTime, ct: md && md.captureTime, pf: md && md.presentedFrames }))
   : requestAnimationFrame(() => f());
 const say = t => $('#status').textContent = t || '';
 
 // Working resolution. Uploads can be 4K, but the pose model only looks at a ~256 px crop, so 720p is plenty and 4K frames
 // were slow enough to make the analysis skip frames. Raise to 1920 (or 3840) for a sharper saved video – at the cost of speed.
 const ANALYSIS_MAX = 1280;
-const fit = (vw, vh) => { const k = Math.min(1, ANALYSIS_MAX / Math.max(vw, vh)); return [Math.max(2, Math.round(vw * k / 2) * 2), Math.max(2, Math.round(vh * k / 2) * 2), k < 1]; };
+const RECORD_MAX = 1920;     // the saved video is rendered in a separate fast pass, so it can be sharper than the analysis frames
+const fit = (vw, vh, max = ANALYSIS_MAX) => { const k = Math.min(1, max / Math.max(vw, vh)); return [Math.max(2, Math.round(vw * k / 2) * 2), Math.max(2, Math.round(vh * k / 2) * 2), k < 1]; };
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
@@ -201,7 +202,7 @@ const newSession = () => {
   S = {
     steps: [], str: [[], []], gct: [[], []], lean: [], elbow: [], rot: [], iv: newIv(), dir: 0, c: [newC(), newC()],
     vb: [], on: 0.2, off: 0.4, dts: [], lt: -1, tl: 0, ll: 0,
-    fr: 0, det: 0, inf: 0, vsum: 0, vcnt: 0, nAtt: 0, base: baseFor(rmode())
+    fr: 0, det: 0, inf: 0, vsum: 0, vcnt: 0, nAtt: 0, base: baseFor(rmode()), track: [], hudTrack: [], trT: -1, wantVideo: false
   };
 };
 
@@ -522,7 +523,7 @@ const tag = s => s.conf != null ? `confidence ${Math.round(s.conf)}%` : `score $
 
 const CN = [[11,12],[23,24],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,25],[25,27],[24,26],[26,28],[27,29],[29,31],[27,31],[28,30],[30,32],[28,32]];
 
-function draw(L, w, h) {
+function draw(L, w, h, st) {
   const k = w / 640, V = i => L[i].visibility > 0.4, P = i => [L[i].x * w, L[i].y * h];
   ctx.lineCap = 'round'; ctx.lineWidth = 4 * k; ctx.shadowColor = '#000'; ctx.shadowBlur = 6 * k;
   CN.forEach(([a, b]) => {
@@ -543,40 +544,64 @@ function draw(L, w, h) {
       ctx.fillText(Math.round(a) + '°', P(25 + s)[0] + 8 * k, P(25 + s)[1]);
     }
     // Green ring on a foot while the detector says it is in stance
-    if (running && S && S.c[s].st && V(31 + s)) {
+    if ((st ? st[s] : running && S && S.c[s].st) && V(31 + s)) {
       ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 3 * k;
       ctx.beginPath(); ctx.arc(...P(31 + s), 10 * k, 0, 7); ctx.stroke();
     }
   });
 }
 
-function hud(w, h) {
-  if (!running) return;
-  const k = w / 640, r = live.rows, fps = S && S.dts.length ? Math.round(1 / (med(S.dts) || 1)) : 0;
+function drawHud(w, h, conf, r, fps) {
+  const k = w / 640;
   ctx.fillStyle = '#000a'; ctx.fillRect(6 * k, 6 * k, 200 * k, r.length ? 74 * k : 24 * k);
   ctx.fillStyle = '#f87171'; ctx.beginPath(); ctx.arc(18 * k, 18 * k, 5 * k, 0, 7); ctx.fill();
   ctx.fillStyle = '#fff'; ctx.font = `bold ${13 * k}px sans-serif`;
-  ctx.fillText('ANALYZING Conf ' + (r.length ? Math.round(live.conf) + '%' : '–') + (fps ? ' · ' + fps + 'fps' : ''), 30 * k, 23 * k);
+  ctx.fillText('ANALYZING Conf ' + (r.length ? Math.round(conf) + '%' : '–') + (fps ? ' · ' + fps + 'fps' : ''), 30 * k, 23 * k);
   r.slice(0, 4).forEach((x, i) => {
     ctx.fillStyle = ['#4ade80', '#fbbf24', '#f87171'][x.c] || '#fff';
     ctx.fillText(x.label + ': ' + x.val, 14 * k, (42 + i * 14) * k);
   });
 }
 
+const curFps = () => S && S.dts.length ? Math.round(1 / (med(S.dts) || 1)) : 0;
+function hud(w, h) { if (running) drawHud(w, h, live.conf, live.rows, curFps()); }
+
+// Compact per-frame landmark store for the replay pass (x, y, visibility per point)
+const pack = L => { const a = new Float32Array(L.length * 3); L.forEach((p, i) => { a[3 * i] = p.x; a[3 * i + 1] = p.y; a[3 * i + 2] = p.visibility; }); return a; };
+const unpack = a => Array.from({ length: a.length / 3 }, (_, i) => ({ x: a[3 * i], y: a[3 * i + 1], visibility: a[3 * i + 2] }));
+
 /* ---------- Main Frame Execution ---------- */
 
-let pmark = 0, srcGaps = [], lastMt = NaN, paceN = 0;
+// Uploaded video: slow playback just enough that every source frame gets analysed (the pose model is slower than real time on
+// most phones). rVFC reports how many frames the browser has shown (presentedFrames); the jump between two callbacks is exactly
+// how many frames were skipped, and media-time / jump is the true source frame interval – so a 60 fps clip is recognised as 60 fps
+// even while half its frames are being skipped. (The previous version estimated the interval from the frames it had already
+// skipped, locked onto 30 fps, and never slowed down enough.)
+let pmark = 0, fiS = [], lastMt = NaN, lastPf = NaN, paceN = 0, nSeen = 0, nMiss = 0, missW = 0, hf = 0.8, hfMax = 0.9, clean = 0, said = 1;
 
-// Uploaded video: slow playback so every source frame gets analysed (the pose model is slower than real time on most phones).
-// Skipped frames were the main reason timing metrics (stride CV, contact time) and confidence were poor.
-function pace(t, ms) {
-  pmark = pmark ? pmark * 0.9 + ms * 0.1 : ms;                               // smoothed ms of work per frame
-  if (Number.isFinite(lastMt) && t > lastMt && t - lastMt < 0.5) { srcGaps.push(t - lastMt); if (srcGaps.length > 90) srcGaps.shift(); }
-  lastMt = t;
-  if (++paceN % 15 || srcGaps.length < 15) return;
-  const fi = pct(srcGaps, 0.1) * 1000, user = +$('#spd').value || 1;        // fi = source frame interval (ms of video time)
-  const want = clamp(0.75 * fi / pmark, 0.2, user);                         // at rate r each frame gets fi / r ms of real time
-  if (Math.abs(want - vid.playbackRate) > 0.1 * vid.playbackRate) { try { vid.playbackRate = want; } catch (e) {} if (want < 0.9 * user) say(`Analysing at ${want.toFixed(1)}× speed so no frames are skipped.`); }
+function paceReset() { pmark = 0; fiS = []; lastMt = lastPf = NaN; paceN = nSeen = nMiss = missW = clean = 0; hf = 0.8; hfMax = 0.9; said = 1; }
+
+function pace(t, ms, pf) {
+  pmark = pmark ? pmark * 0.9 + ms * 0.1 : ms; nSeen++;                      // smoothed ms of work per frame
+  if (Number.isFinite(lastMt) && t > lastMt && t - lastMt < 0.5) {
+    const d = Number.isFinite(pf) && Number.isFinite(lastPf) && pf > lastPf ? pf - lastPf : 1;
+    fiS.push((t - lastMt) / d); if (fiS.length > 120) fiS.shift();
+    if (d > 1) { nMiss += d - 1; missW += d - 1; }
+  }
+  lastMt = t; lastPf = pf;
+  if (fiS.length < 4 || (paceN !== 5 && paceN % 12 !== 11)) { paceN++; return; }
+  paceN++;
+  const fi = med(fiS) * 1000, user = +$('#spd').value || 1;                 // fi = true source frame interval, ms of video time
+  // Learn how much headroom this phone needs: back off after skipped frames, remember that level as a ceiling, and only
+  // re-probe above it after a long clean stretch (otherwise the rate keeps oscillating around the limit)
+  if (missW) { hfMax = Math.min(hfMax, hf * 0.97); hf = Math.max(0.3, hf * 0.85); clean = 0; }
+  else { hf = Math.min(hfMax, hf * 1.03); if (++clean % 10 === 0) hfMax = Math.min(0.9, hfMax * 1.04); }
+  missW = 0;
+  const want = clamp(hf * fi / pmark, 0.125, user);                         // at rate r each frame gets fi / r ms of real time
+  if (Math.abs(want - vid.playbackRate) > 0.08 * vid.playbackRate) {
+    try { vid.playbackRate = want; } catch (e) {}
+    if (want < 0.9 * user && Math.abs(want - said) > 0.1) { said = want; say(`Analysing at ${want.toFixed(2)}× speed so no frames are skipped.`); }
+  }
 }
 
 function frame(meta) {
@@ -605,11 +630,15 @@ function frame(meta) {
     draw(L, w, h);
     if (running) {
       process(L, w, h, tt);
-      if (++fc % 12 === 0) { live = analyze(8); paint(live); }
+      if (S.wantVideo && tt > S.trT && S.track.length < 60000) { S.trT = tt; S.track.push({ t: tt, L: pack(L), st: [S.c[0].st, S.c[1].st] }); }
+      if (++fc % 12 === 0) {
+        live = analyze(8); paint(live);
+        if (S.wantVideo) S.hudTrack.push({ t: tt, conf: live.conf, fps: curFps(), rows: live.rows.slice(0, 4).map(x => ({ label: x.label, val: x.val, c: x.c })) });
+      }
     }
   }
   hud(w, h);
-  if (running && mode === 'file') pace(tt, performance.now() - t0);
+  if (running && mode === 'file') pace(tt, performance.now() - t0, mf.pf);
   else if (!running && mode === 'live') watchSpeed(dMs);
 }
 
@@ -647,7 +676,7 @@ let tickErr = 0;
 function tick(id, meta) {
   if (id !== loopId || !mode) return;
   // An exception in one frame (e.g. the pose model choking on a huge frame) used to end the loop silently = "analysis never starts"
-  try { if (!(mode === 'file' && vid.paused)) frame(meta); }
+  try { if (!(mode === 'file' && vid.paused) && !rendering) frame(meta); }
   catch (e) { if (++tickErr === 1 || tickErr % 90 === 0) say('Frame skipped: ' + (e.message || e)); }
   next(m => tick(id, m));
 }
@@ -661,7 +690,7 @@ function paint(a) {
 
 /* ---------- Sources ---------- */
 
-let openId = 0, fileUrl = null;
+let openId = 0, fileUrl = null, rendering = null;
 const LOAD_TIMEOUT = 25000, SEEK_TIMEOUT = 4000;
 
 async function openLive() {
@@ -720,15 +749,15 @@ async function openFile(f) {
 
 function ready() { FL = {}; pm = []; $('#bGo').disabled = false; $('#bFlip').hidden = mode !== 'live'; $('#scrub').hidden = mode !== 'file'; say(''); const id = ++loopId; next(m => tick(id, m)); }
 
-function stopSrc() { if (running) abortRun(''); running = false; mode = null; $('#scrub').hidden = true; stream && stream.getTracks().forEach(t => t.stop()); stream = null; releaseVideo(); }
+function stopSrc() { if (rendering) rendering.cancel(); if (running) abortRun(''); running = false; mode = null; $('#scrub').hidden = true; stream && stream.getTracks().forEach(t => t.stop()); stream = null; releaseVideo(); }
 
 /* ---------- Recording & Recording Session ---------- */
 
-function startRec() {
+function startRec(bps = 6e6, fps = 0) {
   const mt = ['video/mp4;codecs=avc1', 'video/webm;codecs=vp9', 'video/webm'].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
   if (!mt) { say('Video saving not supported in this browser'); rec = null; return; }
-  // captureStream() with no fps argument = one recorded frame per analysed frame (it was capped at 30 fps)
-  chunks = []; rec = new MediaRecorder(cv.captureStream(), { mimeType: mt, videoBitsPerSecond: 6e6 }); rec.mt = mt.split(';')[0];
+  // fps = ceiling for recorded frames (0 = one recorded frame per painted frame)
+  chunks = []; rec = new MediaRecorder(fps ? cv.captureStream(fps) : cv.captureStream(), { mimeType: mt, videoBitsPerSecond: bps }); rec.mt = mt.split(';')[0];
   rec.ondataavailable = e => e.data.size && chunks.push(e.data); rec.start(1000);
 }
 
@@ -754,9 +783,11 @@ async function start() {
   newSession(); live = { rows: [], conf: NaN }; fc = 0; tickErr = 0; running = true;
   const rm = $('#runMode'); if (rm) rm.disabled = true;                      // the baseline is per run type, so it is fixed for the session
   $('#sum').innerHTML = ''; $('#bGo').textContent = 'Stop and save'; $('#bGo').classList.add('stop');
-  if ($('#rec').value === '1') startRec(); else rec = null;
+  // Uploads: analyse first, then render the saved video in a second, full-speed pass (the pose model is too slow to record live at 60 fps)
+  S.wantVideo = mode === 'file' && $('#rec').value === '1';
+  if ($('#rec').value === '1' && mode !== 'file') startRec(); else rec = null;
   if (mode === 'file') {
-    vid.playbackRate = +$('#spd').value; pmark = 0; srcGaps = []; lastMt = NaN; paceN = 0; if (vid.ended) vid.currentTime = 0;
+    vid.playbackRate = +$('#spd').value; paceReset(); if (vid.ended) vid.currentTime = 0;
     // play() can reject (decoder busy, interrupted by a seek…). It used to leave the button on "Stop and save" with nothing running.
     try { await vid.play(); } catch (e) { abortRun('Could not start playback (' + (e.name || 'error') + '). Tap Start again, or re-select the video.'); return; }
   }
@@ -767,19 +798,71 @@ async function start() {
   }, 12000);
 }
 
+// Second pass for uploads: replay the video at its own speed, painting the stored skeleton on top, and record THAT.
+// No pose model runs here, so it keeps up with 60 fps and the saved file has the source's frame rate and true speed.
+function renderVideo(tr, ht, srcFps) {
+  return new Promise(async resolve => {
+    const [w, h] = fit(vid.videoWidth, vid.videoHeight, RECORD_MAX);
+    cv.width = w; cv.height = h;
+    startRec(clamp(w * h * (srcFps || 30) * 0.1, 4e6, 16e6), clamp(Math.round((srcFps || 60) * 1.25), 30, 120));
+    if (!rec) return resolve(null);
+    const job = { done: false, n: 0, t0: 0 };
+    let i = 0, k = 0, last = performance.now(), wd = 0;
+    const end = async ok => {
+      if (job.done) return;
+      job.done = true; rendering = null; clearTimeout(wd); try { vid.pause(); } catch (e) {}
+      let blob = null;
+      if (rec && rec.state !== 'inactive') {
+        if (ok) blob = await stopRec(); else { rec.ondataavailable = null; rec.onstop = null; try { rec.stop(); } catch (e) {} }
+      }
+      rec = null;
+      resolve(blob ? { blob, fps: Math.round(job.n / Math.max(0.5, (performance.now() - job.t0) / 1000)) } : null);
+    };
+    job.end = () => end(true); job.cancel = () => end(false);
+    rendering = job; $('#bGo').disabled = true; say('Rendering the saved video at full speed…');
+    const step = m => {
+      if (job.done) return;
+      last = performance.now(); if (!job.n++) job.t0 = last;
+      const t = m && Number.isFinite(m.mt) ? m.mt : vid.currentTime;
+      ctx.drawImage(vid, 0, 0, w, h);
+      while (i + 1 < tr.length && tr[i + 1].t <= t + 1e-3) i++;
+      const e = tr[i]; if (e && t - e.t < 0.25) draw(unpack(e.L), w, h, e.st);
+      while (k + 1 < ht.length && ht[k + 1].t <= t) k++;
+      const o = ht[k]; if (o && o.t <= t) drawHud(w, h, o.conf, o.rows, o.fps);
+      next(step);
+    };
+    const watch = () => {
+      if (job.done) return;
+      if (performance.now() - last > 8000) { say('Could not render the saved video.'); end(false); } else wd = setTimeout(watch, 2000);
+    };
+    try {
+      await seekTo(0.05); if (job.done) return;
+      vid.playbackRate = +$('#spd').value || 1;
+      await vid.play(); last = performance.now();
+      next(step); wd = setTimeout(watch, 2000);
+    } catch (e) { say('Could not render the saved video (' + (e.name || 'error') + ').'); end(false); }
+  });
+}
+
 async function finish() {
   if (!running) return;
   running = false; vid.pause(); resetRunUI();
+  const sess = S, m0 = mode, tr = S.track, ht = S.hudTrack, srcFps = fiS.length ? Math.round(1 / med(fiS)) : null;
   const an = analyze(Infinity), strides = an.m.nOk, ok = S.steps.length >= 4 && strides >= 2;
-  const sum = { conf: an.conf, cf: an.cf, notes: an.notes, rebuild: an.rebuild, dims: an.dims, rows: an.rows, steps: S.steps.length, strides, ok, modeTarget: rmode(), curves: an.m.curves, baseN: an.baseN, fps: Math.round(an.m.fps) || null, work: cv.width + '×' + cv.height };
+  const sum = { conf: an.conf, cf: an.cf, notes: an.notes, rebuild: an.rebuild, dims: an.dims, rows: an.rows, steps: S.steps.length, strides, ok, modeTarget: rmode(), curves: an.m.curves, baseN: an.baseN, fps: Math.round(an.m.fps) || null, work: cv.width + '×' + cv.height, src: srcFps, skip: nMiss };
   if (ok && an.conf >= 60) baseUpdate(sum.modeTarget, an.m);     // only confident sessions shape the baseline
   let blob = null; if (rec && rec.state !== 'inactive') blob = await stopRec();
   // The summary card already holds the full readings + coaching, so clear the live panel instead of repainting it (was showing results twice)
   $('#sum').innerHTML = sumHTML(sum); $('#chips').innerHTML = $('#cm').innerHTML = '';
-  if (blob) {
-    await tx('readwrite', s => s.put({ id: Date.now(), date: new Date().toLocaleString(), mode, sum, blob }));
-    say('Saved to History'); renderHist();
+  if (sess.wantVideo && tr.length > 5) {
+    const r = await renderVideo(tr, ht, srcFps);
+    if (m0) $('#bGo').disabled = false;
+    if (r) { blob = r.blob; sum.vfps = r.fps; if (S === sess) $('#sum').innerHTML = sumHTML(sum); }
   }
+  if (blob) {
+    await tx('readwrite', s => s.put({ id: Date.now(), date: new Date().toLocaleString(), mode: m0, sum, blob }));
+    say('Saved to History'); renderHist();
+  } else if (sess.wantVideo) say('The analysis is done, but the saved video could not be rendered.');
   if (mode === 'file') { vid.currentTime = 0.05; }
 }
 
@@ -796,7 +879,7 @@ function sumHTML(s) {
   const notes = (s.notes || []).map(t => `<div class="note">${t}</div>`).join('');
   const base = nw ? `<div class="note">${s.baseN >= 3 ? `Compared with your ${mt} baseline (${s.baseN} sessions).${s.rebuild != null && s.rebuild < 3 ? ` Foot reach, heel recovery, L/R diff and contact time are still rebuilding (${s.rebuild}/3) and use general ranges.` : ''}` : `Building your ${mt} baseline (${s.baseN}/3 sessions) – colours use general reference ranges until then.`}</div>` : '';
   return `<div class="card">${head}
-<div class="note">${s.steps} steps${s.strides != null ? ' · ' + s.strides + ' valid strides' : ''} analysed${s.fps ? ' · ' + s.fps + ' fps' : ''}${s.work ? ' · ' + s.work : ''}</div>${warn}${why}${notes}${base}
+<div class="note">${s.steps} steps${s.strides != null ? ' · ' + s.strides + ' valid strides' : ''} analysed</div><div class="note">${[s.src && s.src + ' fps source', s.fps && s.fps + ' fps analysed', s.skip > 0 && s.skip + ' frames skipped', s.vfps && 'saved video ' + s.vfps + ' fps', s.work].filter(Boolean).join(' · ')}</div>${warn}${why}${notes}${base}
 ${nw ? `<b>Form dimensions</b><div class="grid">${chips(s.dims.filter(x => !['Vertical motion', 'Braking / overstride', 'Ground contact'].includes(x.label)))}</div><b>Measurements</b>` : ''}<div class="grid">${chips(s.rows)}</div>
 <b>Coaching notes</b><ul>${(tips.length ? tips : [{ c: 0, msg: 'No notable deviations for this effort.' }]).map(x => `<li class="${cl[x.c]}">${x.msg}</li>`).join('')}</ul></div>`;
 }
@@ -853,7 +936,7 @@ $('#bFlip').onclick = () => { facing = facing === 'environment' ? 'user' : 'envi
 $('#file').onchange = e => { const f = e.target.files[0]; e.target.value = ''; f && openFile(f); };   // clearing the value lets the same file be picked again
 $('#bGo').onclick = () => running ? finish() : start();
 $('#spd').onchange = () => vid.playbackRate = +$('#spd').value;
-vid.onended = () => mode === 'file' && finish();
+vid.onended = () => { if (rendering) rendering.end(); else if (mode === 'file') finish(); };
 
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
