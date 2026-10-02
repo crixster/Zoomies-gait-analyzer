@@ -757,17 +757,23 @@ function stopSrc() { if (rendering) rendering.cancel(); if (running) abortRun(''
 
 /* ---------- Recording & Recording Session ---------- */
 
-function startRec(bps = 6e6, fps = 0) {
-  const mt = ['video/mp4;codecs=avc1', 'video/webm;codecs=vp9', 'video/webm'].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
-  if (!mt) { say('Video saving not supported in this browser'); rec = null; return; }
+function startRec(bps = 6e6, fps = 0, only = '') {
+  const all = ['video/mp4;codecs=avc1', 'video/webm;codecs=vp9', 'video/webm'], okT = m => window.MediaRecorder && MediaRecorder.isTypeSupported(m);
+  const mt = all.filter(m => !only || m.startsWith(only)).find(okT) || all.find(okT);
+  if (!mt) { say('Video saving not supported in this browser'); rec = null; recErr = 'no supported video format'; return; }
   // fps = ceiling for recorded frames (0 = one recorded frame per painted frame)
-  chunks = []; rec = new MediaRecorder(fps ? cv.captureStream(fps) : cv.captureStream(), { mimeType: mt, videoBitsPerSecond: bps }); rec.mt = mt.split(';')[0];
-  rec.ondataavailable = e => e.data.size && chunks.push(e.data); rec.start(1000);
+  chunks = []; recErr = '';
+  try {
+    rec = new MediaRecorder(fps ? cv.captureStream(fps) : cv.captureStream(), { mimeType: mt, videoBitsPerSecond: bps }); rec.mt = mt.split(';')[0];
+  } catch (e) { rec = null; recErr = 'recorder could not start: ' + (e.name || e.message || 'error'); return; }
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  rec.onerror = e => { recErr = 'recorder error: ' + ((e.error && e.error.name) || 'encoder failed'); };
+  rec.start(1000);
 }
 
 const stopRec = () => new Promise(r => { rec.onstop = () => r(new Blob(chunks, { type: rec.mt })); rec.stop(); });
 
-let startWd = 0;
+let startWd = 0, recErr = '', renderWhy = '', recMime = '';
 
 function resetRunUI() {
   clearTimeout(startWd);
@@ -804,13 +810,17 @@ async function start() {
 
 // Second pass for uploads: replay the video at its own speed, painting the stored skeleton on top, and record THAT.
 // No pose model runs here, so it keeps up with 60 fps and the saved file has the source's frame rate and true speed.
-function renderVideo(tr, ht, srcFps) {
+function renderVideo(tr, ht, srcFps, safe) {
   return new Promise(async resolve => {
-    const [w, h] = fit(vid.videoWidth, vid.videoHeight, RECORD_MAX);
+    // safe = retry after a failure: smaller frames, lower bitrate/fps, and the other container (mp4 <-> webm) if the device offers it
+    const [w, h] = fit(vid.videoWidth, vid.videoHeight, safe ? 1280 : RECORD_MAX);
     cv.width = w; cv.height = h;
-    startRec(clamp(w * h * (srcFps || 30) * 0.1, 4e6, 16e6), clamp(Math.round((srcFps || 60) * 1.25), 30, 120));
-    if (!rec) return resolve(null);
-    const job = { done: false, n: 0, t0: 0 };
+    if (!safe) recMime = '';
+    if (safe) startRec(6e6, 30, recMime === 'video/mp4' ? 'video/webm' : 'video/mp4');
+    else startRec(clamp(w * h * (srcFps || 30) * 0.1, 4e6, 16e6), clamp(Math.round((srcFps || 60) * 1.25), 30, 120));
+    if (!rec) { renderWhy = recErr || 'recorder unavailable'; return resolve(null); }
+    recMime = rec.mt;
+    const job = { done: false, n: 0, t0: 0, err: 0, why: '' };
     let i = 0, k = 0, last = performance.now(), wd = 0;
     const end = async ok => {
       if (job.done) return;
@@ -818,33 +828,40 @@ function renderVideo(tr, ht, srcFps) {
       let blob = null;
       if (rec && rec.state !== 'inactive') {
         if (ok) blob = await stopRec(); else { rec.ondataavailable = null; rec.onstop = null; try { rec.stop(); } catch (e) {} }
-      }
+      } else if (ok) job.why = job.why || recErr || 'recorder stopped early';
+      if (blob && !blob.size) { blob = null; job.why = job.why || 'empty video file'; }
       rec = null;
+      if (!blob) renderWhy = job.why || recErr || 'unknown reason';
       resolve(blob ? { blob, fps: Math.round(job.n / Math.max(0.5, (performance.now() - job.t0) / 1000)) } : null);
     };
     job.end = () => end(true); job.cancel = () => end(false);
-    rendering = job; $('#bGo').disabled = true; say('Rendering the saved video at full speed…');
+    rendering = job; $('#bGo').disabled = true; say(safe ? 'Retrying the saved video at lower quality…' : 'Rendering the saved video at full speed…');
     const step = m => {
       if (job.done) return;
-      last = performance.now(); if (!job.n++) job.t0 = last;
-      const t = m && Number.isFinite(m.mt) ? m.mt : vid.currentTime;
-      ctx.drawImage(vid, 0, 0, w, h);
-      while (i + 1 < tr.length && tr[i + 1].t <= t + 1e-3) i++;
-      const e = tr[i]; if (e && t - e.t < 0.25) draw(unpack(e.L), w, h, e.st);
-      while (k + 1 < ht.length && ht[k + 1].t <= t) k++;
-      const o = ht[k]; if (o && o.t <= t) drawHud(w, h, o.conf, o.rows, o.fps);
+      // a drawing error on one frame must not stop the loop (it used to end the render after 8 s with no video)
+      try {
+        last = performance.now(); if (!job.n++) job.t0 = last;
+        const t = m && Number.isFinite(m.mt) ? m.mt : vid.currentTime;
+        ctx.drawImage(vid, 0, 0, w, h);
+        while (i + 1 < tr.length && tr[i + 1].t <= t + 1e-3) i++;
+        const e = tr[i]; if (e && t - e.t < 0.25) draw(unpack(e.L), w, h, e.st);
+        while (k + 1 < ht.length && ht[k + 1].t <= t) k++;
+        const o = ht[k]; if (o && o.t <= t) drawHud(w, h, o.conf, o.rows, o.fps);
+      } catch (e) { if (!job.err++) job.why = 'drawing error: ' + (e.message || e.name || 'error'); }
       next(step);
     };
     const watch = () => {
       if (job.done) return;
-      if (performance.now() - last > 8000) { say('Could not render the saved video.'); end(false); } else wd = setTimeout(watch, 2000);
+      if (rec && rec.state === 'inactive') { job.why = job.why || recErr || 'recorder stopped unexpectedly'; end(false); }
+      else if (performance.now() - last > 8000) { job.why = job.why || 'no video frames arrived'; end(false); }
+      else wd = setTimeout(watch, 2000);
     };
     try {
       await seekTo(0.05); if (job.done) return;
       vid.playbackRate = +$('#spd').value || 1;
       await vid.play(); last = performance.now();
       next(step); wd = setTimeout(watch, 2000);
-    } catch (e) { say('Could not render the saved video (' + (e.name || 'error') + ').'); end(false); }
+    } catch (e) { job.why = 'playback failed: ' + (e.name || 'error'); end(false); }
   });
 }
 
@@ -859,14 +876,16 @@ async function finish() {
   // The summary card already holds the full readings + coaching, so clear the live panel instead of repainting it (was showing results twice)
   $('#sum').innerHTML = sumHTML(sum); $('#chips').innerHTML = $('#cm').innerHTML = '';
   if (sess.wantVideo && tr.length > 5) {
-    const r = await renderVideo(tr, ht, srcFps);
+    renderWhy = '';
+    let r = await renderVideo(tr, ht, srcFps);
+    if (!r) r = await renderVideo(tr, ht, srcFps, true);              // one retry at lower quality / the other container
     if (m0) $('#bGo').disabled = false;
     if (r) { blob = r.blob; sum.vfps = r.fps; if (S === sess) $('#sum').innerHTML = sumHTML(sum); }
   }
   if (blob) {
     await tx('readwrite', s => s.put({ id: Date.now(), date: new Date().toLocaleString(), mode: m0, sum, blob }));
     say('Saved to History'); renderHist();
-  } else if (sess.wantVideo) say('The analysis is done, but the saved video could not be rendered.');
+  } else if (sess.wantVideo) say('The analysis is done, but the saved video could not be rendered' + (renderWhy ? ' (' + renderWhy + ')' : '') + '.');
   if (mode === 'file') { vid.currentTime = 0.05; }
 }
 
