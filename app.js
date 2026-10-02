@@ -38,6 +38,11 @@ const next = f => mode !== 'demo' && vid.requestVideoFrameCallback
   : requestAnimationFrame(() => f());
 const say = t => $('#status').textContent = t || '';
 
+// Working resolution. Uploads can be 4K, but the pose model only looks at a ~256 px crop, so 720p is plenty and 4K frames
+// were slow enough to make the analysis skip frames. Raise to 1920 (or 3840) for a sharper saved video – at the cost of speed.
+const ANALYSIS_MAX = 1280;
+const fit = (vw, vh) => { const k = Math.min(1, ANALYSIS_MAX / Math.max(vw, vh)); return [Math.max(2, Math.round(vw * k / 2) * 2), Math.max(2, Math.round(vh * k / 2) * 2), k < 1]; };
+
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
 /* ---------- Run types ---------- */
@@ -570,8 +575,8 @@ function pace(t, ms) {
   lastMt = t;
   if (++paceN % 15 || srcGaps.length < 15) return;
   const fi = pct(srcGaps, 0.1) * 1000, user = +$('#spd').value || 1;        // fi = source frame interval (ms of video time)
-  const want = clamp(0.75 * fi / pmark, 0.15, user);                        // at rate r each frame gets fi / r ms of real time
-  if (Math.abs(want - vid.playbackRate) > 0.1 * vid.playbackRate) vid.playbackRate = want;
+  const want = clamp(0.75 * fi / pmark, 0.2, user);                         // at rate r each frame gets fi / r ms of real time
+  if (Math.abs(want - vid.playbackRate) > 0.1 * vid.playbackRate) { try { vid.playbackRate = want; } catch (e) {} if (want < 0.9 * user) say(`Analysing at ${want.toFixed(1)}× speed so no frames are skipped.`); }
 }
 
 function frame(meta) {
@@ -586,12 +591,12 @@ function frame(meta) {
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
     bg(tt); L = synth(tt);
   } else {
-    if (vid.readyState < 2 || !lm) return;
-    w = vid.videoWidth; h = vid.videoHeight;
+    if (vid.readyState < 2 || !lm || !vid.videoWidth) return;
+    let scaled; [w, h, scaled] = fit(vid.videoWidth, vid.videoHeight);
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
-    ctx.drawImage(vid, 0, 0);
+    ctx.drawImage(vid, 0, 0, w, h);
     const d0 = performance.now();
-    L = lm.detectForVideo(vid, ts).landmarks[0];
+    L = lm.detectForVideo(scaled ? cv : vid, ts).landmarks[0];             // downscaled canvas, so a 4K frame is never uploaded to the model
     dMs = performance.now() - d0;
   }
   if (running && S) S.fr++;
@@ -637,9 +642,13 @@ function synth(t) {
 
 let loopId = 0;
 
+let tickErr = 0;
+
 function tick(id, meta) {
   if (id !== loopId || !mode) return;
-  if (!(mode === 'file' && vid.paused)) frame(meta);
+  // An exception in one frame (e.g. the pose model choking on a huge frame) used to end the loop silently = "analysis never starts"
+  try { if (!(mode === 'file' && vid.paused)) frame(meta); }
+  catch (e) { if (++tickErr === 1 || tickErr % 90 === 0) say('Frame skipped: ' + (e.message || e)); }
   next(m => tick(id, m));
 }
 
@@ -652,53 +661,117 @@ function paint(a) {
 
 /* ---------- Sources ---------- */
 
+let openId = 0, fileUrl = null;
+const LOAD_TIMEOUT = 25000, SEEK_TIMEOUT = 4000;
+
 async function openLive() {
   try {
     await loadModel(); stopSrc();
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false });
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
     vid.srcObject = stream; await vid.play(); mode = 'live'; ready();
   } catch (e) {
     say(/NotAllowed|NotFound|Permission/.test(e.name + e.message) ? 'Camera unavailable – allow camera access (HTTPS required).' : e.message);
   }
 }
 
+// Frees the previous video's decoder and blob. Phones have very few hardware decoders (4K needs a big one), and a decoder that was
+// never released is a common reason the next upload just sits there.
+function releaseVideo() {
+  vid.pause(); vid.removeAttribute('src'); vid.srcObject = null; vid.load();
+  if (fileUrl) { URL.revokeObjectURL(fileUrl); fileUrl = null; }
+}
+
+// Resolves when the first frame is ready; rejects on a decode error or timeout (previously it waited forever)
+function whenLoaded(my) {
+  return new Promise((ok, no) => {
+    let tm = 0;
+    function fin(e) { clearTimeout(tm); vid.onloadeddata = vid.oncanplay = vid.onerror = null; e ? no(e) : ok(); }
+    tm = setTimeout(() => fin(new Error(my !== openId ? 'superseded' : 'The video took too long to load. Try a shorter clip, or re-export it as H.264 (4K H.265/HEVC often cannot be decoded in the browser).')), LOAD_TIMEOUT);
+    vid.onloadeddata = vid.oncanplay = () => fin();
+    vid.onerror = () => fin(new Error(vid.error && vid.error.code === 4
+      ? 'This browser cannot decode that video format. Re-export it as H.264 (MP4), or use a 1080p version.'
+      : 'The video could not be read. Try selecting it again.'));
+  });
+}
+
+// A seek event that never arrives must not freeze the upload
+const seekTo = t => new Promise(ok => {
+  let tm = 0;
+  const done = () => { clearTimeout(tm); vid.onseeked = null; ok(); };
+  tm = setTimeout(done, SEEK_TIMEOUT); vid.onseeked = done;
+  try { vid.currentTime = t; } catch (e) { done(); }
+});
+
 async function openFile(f) {
-  await loadModel(); stopSrc(); vid.srcObject = null; vid.src = URL.createObjectURL(f); vid.loop = false;
-  await new Promise(r => vid.onloadeddata = r);
-  vid.currentTime = 0.05; await new Promise(r => vid.onseeked = r);
-  mode = 'file'; ready(); frame();
+  const my = ++openId;                                                      // a newer upload cancels an older one that is still loading
+  try {
+    say('Loading video…');
+    await loadModel(); if (my !== openId) return;
+    stopSrc(); vid.muted = true; vid.playsInline = true; vid.preload = 'auto'; vid.loop = false;
+    const loaded = whenLoaded(my);
+    fileUrl = URL.createObjectURL(f); vid.src = fileUrl; vid.load();
+    await loaded; if (my !== openId) return;
+    await seekTo(0.05); if (my !== openId) return;
+    if (!vid.videoWidth) throw new Error('The video has no picture – try selecting it again.');
+    mode = 'file'; ready(); say('');
+    try { frame(); } catch (e) {}                                           // preview of the first frame
+  } catch (e) { if (my === openId) say(e.message); }
 }
 
 function ready() { FL = {}; pm = []; $('#bGo').disabled = false; $('#bFlip').hidden = mode !== 'live'; $('#scrub').hidden = mode !== 'file'; say(''); const id = ++loopId; next(m => tick(id, m)); }
 
-function stopSrc() { running = false; mode = null; $('#scrub').hidden = true; stream && stream.getTracks().forEach(t => t.stop()); stream = null; vid.pause(); }
+function stopSrc() { if (running) abortRun(''); running = false; mode = null; $('#scrub').hidden = true; stream && stream.getTracks().forEach(t => t.stop()); stream = null; releaseVideo(); }
 
 /* ---------- Recording & Recording Session ---------- */
 
 function startRec() {
   const mt = ['video/mp4;codecs=avc1', 'video/webm;codecs=vp9', 'video/webm'].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
   if (!mt) { say('Video saving not supported in this browser'); rec = null; return; }
-  chunks = []; rec = new MediaRecorder(cv.captureStream(30), { mimeType: mt, videoBitsPerSecond: 4e6 }); rec.mt = mt.split(';')[0];
+  // captureStream() with no fps argument = one recorded frame per analysed frame (it was capped at 30 fps)
+  chunks = []; rec = new MediaRecorder(cv.captureStream(), { mimeType: mt, videoBitsPerSecond: 6e6 }); rec.mt = mt.split(';')[0];
   rec.ondataavailable = e => e.data.size && chunks.push(e.data); rec.start(1000);
 }
 
 const stopRec = () => new Promise(r => { rec.onstop = () => r(new Blob(chunks, { type: rec.mt })); rec.stop(); });
 
+let startWd = 0;
+
+function resetRunUI() {
+  clearTimeout(startWd);
+  const rm = $('#runMode'); if (rm) rm.disabled = false;
+  $('#bGo').textContent = 'Start analysis'; $('#bGo').classList.remove('stop');
+}
+
+// Cancel a run that never got going (or was interrupted) without saving anything
+function abortRun(msg) {
+  running = false; try { vid.pause(); } catch (e) {} resetRunUI();
+  if (rec && rec.state !== 'inactive') { rec.ondataavailable = null; rec.onstop = null; try { rec.stop(); } catch (e) {} }
+  rec = null; say(msg || '');
+}
+
 async function start() {
-  newSession(); live = { rows: [], conf: NaN }; fc = 0; running = true;
+  if (running) return;
+  newSession(); live = { rows: [], conf: NaN }; fc = 0; tickErr = 0; running = true;
   const rm = $('#runMode'); if (rm) rm.disabled = true;                      // the baseline is per run type, so it is fixed for the session
   $('#sum').innerHTML = ''; $('#bGo').textContent = 'Stop and save'; $('#bGo').classList.add('stop');
   if ($('#rec').value === '1') startRec(); else rec = null;
-  if (mode === 'file') { vid.playbackRate = +$('#spd').value; pmark = 0; srcGaps = []; lastMt = NaN; paceN = 0; if (vid.ended) vid.currentTime = 0; await vid.play(); }
+  if (mode === 'file') {
+    vid.playbackRate = +$('#spd').value; pmark = 0; srcGaps = []; lastMt = NaN; paceN = 0; if (vid.ended) vid.currentTime = 0;
+    // play() can reject (decoder busy, interrupted by a seek…). It used to leave the button on "Stop and save" with nothing running.
+    try { await vid.play(); } catch (e) { abortRun('Could not start playback (' + (e.name || 'error') + '). Tap Start again, or re-select the video.'); return; }
+  }
+  startWd = setTimeout(() => {
+    if (!running || !S) return;
+    if (!S.fr) abortRun('No video frames arrived – re-select the video, or try a shorter / H.264 clip.');
+    else if (!S.det) say('No runner detected yet – keep the whole body in frame.');
+  }, 12000);
 }
 
 async function finish() {
   if (!running) return;
-  running = false; vid.pause();
-  const rm = $('#runMode'); if (rm) rm.disabled = false;
-  $('#bGo').textContent = 'Start analysis'; $('#bGo').classList.remove('stop');
+  running = false; vid.pause(); resetRunUI();
   const an = analyze(Infinity), strides = an.m.nOk, ok = S.steps.length >= 4 && strides >= 2;
-  const sum = { conf: an.conf, cf: an.cf, notes: an.notes, rebuild: an.rebuild, dims: an.dims, rows: an.rows, steps: S.steps.length, strides, ok, modeTarget: rmode(), curves: an.m.curves, baseN: an.baseN };
+  const sum = { conf: an.conf, cf: an.cf, notes: an.notes, rebuild: an.rebuild, dims: an.dims, rows: an.rows, steps: S.steps.length, strides, ok, modeTarget: rmode(), curves: an.m.curves, baseN: an.baseN, fps: Math.round(an.m.fps) || null, work: cv.width + '×' + cv.height };
   if (ok && an.conf >= 60) baseUpdate(sum.modeTarget, an.m);     // only confident sessions shape the baseline
   let blob = null; if (rec && rec.state !== 'inactive') blob = await stopRec();
   // The summary card already holds the full readings + coaching, so clear the live panel instead of repainting it (was showing results twice)
@@ -723,7 +796,7 @@ function sumHTML(s) {
   const notes = (s.notes || []).map(t => `<div class="note">${t}</div>`).join('');
   const base = nw ? `<div class="note">${s.baseN >= 3 ? `Compared with your ${mt} baseline (${s.baseN} sessions).${s.rebuild != null && s.rebuild < 3 ? ` Foot reach, heel recovery, L/R diff and contact time are still rebuilding (${s.rebuild}/3) and use general ranges.` : ''}` : `Building your ${mt} baseline (${s.baseN}/3 sessions) – colours use general reference ranges until then.`}</div>` : '';
   return `<div class="card">${head}
-<div class="note">${s.steps} steps${s.strides != null ? ' · ' + s.strides + ' valid strides' : ''} analysed</div>${warn}${why}${notes}${base}
+<div class="note">${s.steps} steps${s.strides != null ? ' · ' + s.strides + ' valid strides' : ''} analysed${s.fps ? ' · ' + s.fps + ' fps' : ''}${s.work ? ' · ' + s.work : ''}</div>${warn}${why}${notes}${base}
 ${nw ? `<b>Form dimensions</b><div class="grid">${chips(s.dims.filter(x => !['Vertical motion', 'Braking / overstride', 'Ground contact'].includes(x.label)))}</div><b>Measurements</b>` : ''}<div class="grid">${chips(s.rows)}</div>
 <b>Coaching notes</b><ul>${(tips.length ? tips : [{ c: 0, msg: 'No notable deviations for this effort.' }]).map(x => `<li class="${cl[x.c]}">${x.msg}</li>`).join('')}</ul></div>`;
 }
@@ -777,7 +850,7 @@ $('#h').onchange = () => { const b = $('#bCmp'); if (b) b.disabled = document.qu
 
 $('#bLive').onclick = openLive;
 $('#bFlip').onclick = () => { facing = facing === 'environment' ? 'user' : 'environment'; openLive(); };
-$('#file').onchange = e => e.target.files[0] && openFile(e.target.files[0]).catch(x => say(x.message));
+$('#file').onchange = e => { const f = e.target.files[0]; e.target.value = ''; f && openFile(f); };   // clearing the value lets the same file be picked again
 $('#bGo').onclick = () => running ? finish() : start();
 $('#spd').onchange = () => vid.playbackRate = +$('#spd').value;
 vid.onended = () => mode === 'file' && finish();
