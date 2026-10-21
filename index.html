@@ -8,7 +8,18 @@
 <link rel="stylesheet" href="styles.css"></head><body>
 <div id="splash" role="img" aria-label="Zoomies"><img id="splashImg" src="splash-screen.gif" alt="" decoding="async"></div>
 <script src="splash.js"></script>
-<header><h1><i>Zoomies</i> <b>-</b> Running Gait Analyzer</h1><nav><button data-t="a" class="on">Analyze</button><button data-t="h">History</button></nav></header>
+<header><h1><i>Zoomies</i> <b>-</b> Running Gait Analyzer</h1><nav><button data-t="a" class="on">Analyze</button><button data-t="h">History</button></nav>
+ 
+  <!-- Install App Banner (Android/Chrome shows a real install button; iOS shows Add-to-Home-Screen instructions) -->
+<div id="pwaInstallContainer" class="hidden mt-3 flex justify-center">
+  <button
+    id="pwaInstallBtn"
+    class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md transition"
+  >
+    📲 Install App
+  </button>
+</div>
+</header>
 <main id="a">
  <div class="stage"><canvas id="cv" width="640" height="360"></canvas><div id="status"></div></div>
  <div id="help" class="card note" hidden><p style="color:var(--tx)">Open the live camera or upload a running video. Best results: runner fully in frame, filmed from the side.</p><p>Left leg is drawn coral, right leg blue. Numbers come from 2D pose estimation, so they are estimates for form coaching, not clinical measurements. Run at a steady pace for 10+ steps for stable readings. Ground contact time is estimated from video frames (about ±35 ms at 30 fps). Step through uploaded videos frame by frame with the slider and ‹ › buttons before pressing Start.</p></div>
