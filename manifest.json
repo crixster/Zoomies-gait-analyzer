@@ -1,11 +1,11 @@
 {
-  "id": "./index.html",
+  "id": "/Zoomies-gait-analyzer/",
   "name": "Zoomies - Running Gait Analyzer",
   "short_name": "Zoomies",
   "description": "Running gait analysis from video or live camera, right in your browser.",
 
-  "start_url": "./index.html",
-  "scope": "./",
+  "start_url": "/Zoomies-gait-analyzer/",
+  "scope": "/Zoomies-gait-analyzer/",
 
   "display": "standalone",
   "orientation": "any",
