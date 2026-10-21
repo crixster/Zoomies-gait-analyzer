@@ -3,37 +3,45 @@ let deferredPrompt = null;
 const installContainer = document.getElementById('pwaInstallContainer');
 const installBtn = document.getElementById('pwaInstallBtn');
 
-// Hide if already installed
+// Already installed?
 if (
-  window.matchMedia('(display-mode: standalone)').matches ||
-  window.navigator.standalone
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone
 ) {
-  installContainer?.classList.add('hidden');
+    installContainer?.classList.add('hidden');
 }
 
 window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  deferredPrompt = e;
+    deferredPrompt = e;
 
-  installContainer?.classList.remove('hidden');
+    // Only show button if not installed
+    if (
+        !window.matchMedia('(display-mode: standalone)').matches &&
+        !window.navigator.standalone
+    ) {
+        installContainer?.classList.remove('hidden');
+    }
 });
 
 installBtn?.addEventListener('click', async () => {
-  if (!deferredPrompt) return;
+    if (!deferredPrompt) return;
 
-  deferredPrompt.prompt();
+    deferredPrompt.prompt();
 
-  await deferredPrompt.userChoice;
+    const result = await deferredPrompt.userChoice;
 
-  deferredPrompt = null;
+    if (result.outcome === 'accepted') {
+        installContainer?.classList.add('hidden');
+    }
 
-  installContainer?.classList.add('hidden');
+    deferredPrompt = null;
 });
 
 window.addEventListener('appinstalled', () => {
-  installContainer?.classList.add('hidden');
-  deferredPrompt = null;
+    console.log('PWA installed');
 
-  console.log('PWA installed');
+    installContainer?.classList.add('hidden');
+    deferredPrompt = null;
 });
